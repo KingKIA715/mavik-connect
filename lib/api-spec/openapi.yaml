@@ -10,6 +10,14 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: users
+    description: User profile operations
+  - name: groups
+    description: Family group operations
+  - name: messages
+    description: Chat message operations
+  - name: activity
+    description: Cross-group activity feed
 paths:
   /healthz:
     get:
@@ -24,6 +32,180 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /users/me:
+    get:
+      operationId: getMyProfile
+      tags: [users]
+      summary: Get current user's profile
+      description: Returns (and JIT-provisions) the signed-in user's profile
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
+  /groups:
+    get:
+      operationId: listGroups
+      tags: [groups]
+      summary: List groups the current user belongs to
+      responses:
+        "200":
+          description: List of groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Group"
+    post:
+      operationId: createGroup
+      tags: [groups]
+      summary: Create a new group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupInput"
+      responses:
+        "201":
+          description: Created group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+
+  /groups/{groupId}:
+    get:
+      operationId: getGroup
+      tags: [groups]
+      summary: Get a group's detail including members
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Group detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupDetail"
+        "404":
+          description: Not found
+
+  /groups/{groupId}/members:
+    post:
+      operationId: addGroupMember
+      tags: [groups]
+      summary: Add a member to a group by email
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupMemberInput"
+      responses:
+        "201":
+          description: Added member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMember"
+        "404":
+          description: User with that email not found
+
+  /groups/{groupId}/members/{userId}:
+    delete:
+      operationId: removeGroupMember
+      tags: [groups]
+      summary: Remove a member from a group
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Removed
+
+  /groups/{groupId}/messages:
+    get:
+      operationId: listMessages
+      tags: [messages]
+      summary: List messages in a group
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of messages, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+    post:
+      operationId: sendMessage
+      tags: [messages]
+      summary: Send a message to a group
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageInput"
+      responses:
+        "201":
+          description: Created message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  /activity:
+    get:
+      operationId: getRecentActivity
+      tags: [activity]
+      summary: Get recent messages across all of the user's groups
+      responses:
+        "200":
+          description: Recent activity feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +216,129 @@ components:
       required:
         - status
 
+    UserProfile:
+      type: object
+      required: [id, email, name, createdAt]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    Group:
+      type: object
+      required: [id, name, createdBy, createdAt, memberCount]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+        memberCount:
+          type: integer
+        lastMessageAt:
+          type: ["string", "null"]
+        lastMessagePreview:
+          type: ["string", "null"]
+
+    GroupInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+
+    GroupMember:
+      type: object
+      required: [userId, name, email, role, joinedAt]
+      properties:
+        userId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        role:
+          type: string
+        joinedAt:
+          type: string
+
+    GroupMemberInput:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+
+    GroupDetail:
+      type: object
+      required: [id, name, createdBy, createdAt, members]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupMember"
+
+    Message:
+      type: object
+      required: [id, groupId, senderId, senderName, content, createdAt]
+      properties:
+        id:
+          type: string
+        groupId:
+          type: string
+        senderId:
+          type: string
+        senderName:
+          type: string
+        senderAvatarUrl:
+          type: ["string", "null"]
+        content:
+          type: string
+        createdAt:
+          type: string
+
+    MessageInput:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+
+    ActivityItem:
+      type: object
+      required: [groupId, groupName, senderId, senderName, content, createdAt]
+      properties:
+        groupId:
+          type: string
+        groupName:
+          type: string
+        senderId:
+          type: string
+        senderName:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
