@@ -1,6 +1,7 @@
-import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ClerkProvider, SignIn, SignUp, useAuth } from "@clerk/react";
+import { publishableKeyFromHost } from "@clerk/react/internal";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/Layout";
@@ -14,8 +15,32 @@ import VideoCall from "@/pages/VideoCall";
 
 const queryClient = new QueryClient();
 
-// In Replit, use the proxy or publishable key
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_placeholder";
+// REQUIRED — copy verbatim. Resolves the key from window.location.hostname so the
+// same build serves multiple Clerk custom domains. Do not inline the env var, leave
+// publishableKey undefined, or replace publishableKeyFromHost with anything else.
+const clerkPubKey = publishableKeyFromHost(
+  window.location.hostname,
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+);
+
+// REQUIRED — copy verbatim. Empty in dev (Clerk hits dev FAPI directly), auto-set
+// in prod. Do NOT gate on import.meta.env.PROD / NODE_ENV — the empty dev value
+// is intentional, and any branching breaks the prod proxy.
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+// Clerk passes full paths to routerPush/routerReplace, but wouter's
+// setLocation prepends the base — strip it to avoid doubling.
+function stripBase(path: string): string {
+  return basePath && path.startsWith(basePath)
+    ? path.slice(basePath.length) || "/"
+    : path;
+}
+
+if (!clerkPubKey) {
+  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env file");
+}
 
 function ProtectedRoute({ component: Component }: { component: any }) {
   const { isLoaded, isSignedIn } = useAuth();
@@ -24,23 +49,33 @@ function ProtectedRoute({ component: Component }: { component: any }) {
   return <Component />;
 }
 
+function SignInPage() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+    </div>
+  );
+}
+
+function SignUpPage() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+    </div>
+  );
+}
+
 function Router() {
   return (
     <AppLayout>
       <Switch>
         <Route path="/" component={Landing} />
-        
-        <Route path="/sign-in">
-          <div className="min-h-screen flex items-center justify-center bg-background p-4">
-            <SignIn routing="hash" />
-          </div>
-        </Route>
-        
-        <Route path="/sign-up">
-          <div className="min-h-screen flex items-center justify-center bg-background p-4">
-            <SignUp routing="hash" />
-          </div>
-        </Route>
+
+        {/* REQUIRED — copy "/sign-in/*?" and "/sign-up/*?" verbatim. The /*? optional
+            wildcard is the only wouter syntax that matches both the bare URL and Clerk's
+            OAuth sub-paths. Not /sign-in, not /sign-in/*, not /sign-in/:rest*. */}
+        <Route path="/sign-in/*?" component={SignInPage} />
+        <Route path="/sign-up/*?" component={SignUpPage} />
 
         <Route path="/app">
           <ProtectedRoute component={Dashboard} />
@@ -64,18 +99,33 @@ function Router() {
   );
 }
 
-function App() {
+function ClerkProviderWithRoutes() {
+  const [, setLocation] = useLocation();
+
   return (
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+    <ClerkProvider
+      publishableKey={clerkPubKey}
+      proxyUrl={clerkProxyUrl}
+      signInUrl={`${basePath}/sign-in`}
+      signUpUrl={`${basePath}/sign-up`}
+      routerPush={(to) => setLocation(stripBase(to))}
+      routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+    >
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <Router />
-          </WouterRouter>
+          <Router />
           <Toaster />
         </TooltipProvider>
       </QueryClientProvider>
     </ClerkProvider>
+  );
+}
+
+function App() {
+  return (
+    <WouterRouter base={basePath}>
+      <ClerkProviderWithRoutes />
+    </WouterRouter>
   );
 }
 
