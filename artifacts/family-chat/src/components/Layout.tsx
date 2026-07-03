@@ -23,7 +23,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <div className="p-4 border-b border-sidebar-border">
           <Link href="/app" className="flex items-center gap-2 text-sidebar-primary font-serif font-bold text-xl">
             <MessageCircle className="w-6 h-6" />
-            <span>Family Chat</span>
+            <span>Mavik Connect</span>
           </Link>
         </div>
         

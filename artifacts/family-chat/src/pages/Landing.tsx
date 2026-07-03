@@ -12,7 +12,7 @@ export default function Landing() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6">
       <div className="max-w-xl text-center space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
         <h1 className="text-5xl md:text-7xl font-serif font-bold text-primary tracking-tight">
-          Family Chat
+          Mavik Connect
         </h1>
         <p className="text-xl md:text-2xl text-muted-foreground font-sans leading-relaxed">
           A private, warm space for your family to stay close across the distance. No noise, no distractions. Just the people you love.

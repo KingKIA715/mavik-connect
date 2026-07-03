@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "Family Chat"
+title = "Mavik Connect"
 version = "1.0.0"
 id = "artifacts/family-chat"
 router = "path"
