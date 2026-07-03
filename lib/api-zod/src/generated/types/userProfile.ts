@@ -12,5 +12,7 @@ export interface UserProfile {
   name: string;
   /** @nullable */
   avatarUrl?: string | null;
+  /** @nullable */
+  publicKey?: string | null;
   createdAt: string;
 }

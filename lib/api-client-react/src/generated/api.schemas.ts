@@ -15,7 +15,14 @@ export interface UserProfile {
   name: string;
   /** @nullable */
   avatarUrl?: string | null;
+  /** @nullable */
+  publicKey?: string | null;
   createdAt: string;
+}
+
+export interface PublicKeyInput {
+  /** @minLength 1 */
+  publicKey: string;
 }
 
 export interface Group {
@@ -41,8 +48,23 @@ export interface GroupMember {
   email: string;
   /** @nullable */
   avatarUrl?: string | null;
+  /** @nullable */
+  publicKey?: string | null;
+  hasEncryptionKey: boolean;
   role: string;
   joinedAt: string;
+}
+
+export interface GroupKeyResponse {
+  groupId: string;
+  /** @nullable */
+  wrappedKey: string | null;
+}
+
+export interface GroupKeyInput {
+  userId: string;
+  /** @minLength 1 */
+  wrappedKey: string;
 }
 
 export interface GroupMemberInput {

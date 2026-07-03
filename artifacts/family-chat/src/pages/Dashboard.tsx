@@ -5,6 +5,7 @@ import {
   useListGroups, 
   useGetRecentActivity, 
   useCreateGroup,
+  useSetGroupKey,
   getListGroupsQueryKey
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -13,30 +14,43 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { MessageCirclePlus, Users, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { useEncryption, createAndShareGroupKey } from "@/hooks/use-encryption";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Dashboard() {
   const { data: groups, isLoading: groupsLoading } = useListGroups();
   const { data: activity, isLoading: activityLoading } = useGetRecentActivity();
   const createGroup = useCreateGroup();
+  const setGroupKey = useSetGroupKey();
   const queryClient = useQueryClient();
+  const identity = useEncryption();
+  const { toast } = useToast();
 
   const [newGroupName, setNewGroupName] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
-  const handleCreateGroup = (e: React.FormEvent) => {
+  const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newGroupName.trim()) return;
+    if (!newGroupName.trim() || !identity) return;
 
-    createGroup.mutate(
-      { data: { name: newGroupName } },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListGroupsQueryKey() });
-          setNewGroupName("");
-          setIsDialogOpen(false);
-        }
-      }
-    );
+    setIsCreating(true);
+    try {
+      const group = await createGroup.mutateAsync({ data: { name: newGroupName } });
+      await createAndShareGroupKey({
+        groupId: group.id,
+        myUserId: group.createdBy,
+        myPublicKey: identity.publicKey,
+        setGroupKey: (args) => setGroupKey.mutateAsync(args),
+      });
+      queryClient.invalidateQueries({ queryKey: getListGroupsQueryKey() });
+      setNewGroupName("");
+      setIsDialogOpen(false);
+    } catch {
+      toast({ variant: "destructive", title: "Couldn't create group", description: "Please try again." });
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   return (
@@ -69,8 +83,8 @@ export default function Dashboard() {
                   autoFocus
                 />
               </div>
-              <Button type="submit" disabled={createGroup.isPending} className="w-full">
-                {createGroup.isPending ? "Creating..." : "Create Group"}
+              <Button type="submit" disabled={isCreating || !identity} className="w-full">
+                {isCreating ? "Creating..." : "Create Group"}
               </Button>
             </form>
           </DialogContent>

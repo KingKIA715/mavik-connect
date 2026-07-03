@@ -24,11 +24,14 @@ import type {
   Group,
   GroupDetail,
   GroupInput,
+  GroupKeyInput,
+  GroupKeyResponse,
   GroupMember,
   GroupMemberInput,
   HealthStatus,
   Message,
   MessageInput,
+  PublicKeyInput,
   UserProfile
 } from './api.schemas';
 
@@ -214,6 +217,77 @@ export function useGetMyProfile<TData = Awaited<ReturnType<typeof getMyProfile>>
 
 
 
+
+export const getSetMyPublicKeyUrl = () => {
+
+
+
+
+  return `/api/users/me/public-key`
+}
+
+/**
+ * Uploads the client-generated RSA-OAEP public key used to wrap per-group encryption keys for this user. Idempotent.
+ * @summary Set the current user's end-to-end encryption public key
+ */
+export const setMyPublicKey = async (publicKeyInput: PublicKeyInput, options?: RequestInit): Promise<UserProfile> => {
+
+  return customFetch<UserProfile>(getSetMyPublicKeyUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(publicKeyInput)
+  }
+);}
+
+
+
+
+export const getSetMyPublicKeyMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setMyPublicKey>>, TError,{data: BodyType<PublicKeyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setMyPublicKey>>, TError,{data: BodyType<PublicKeyInput>}, TContext> => {
+
+const mutationKey = ['setMyPublicKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setMyPublicKey>>, {data: BodyType<PublicKeyInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  setMyPublicKey(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetMyPublicKeyMutationResult = NonNullable<Awaited<ReturnType<typeof setMyPublicKey>>>
+    export type SetMyPublicKeyMutationBody = BodyType<PublicKeyInput>
+    export type SetMyPublicKeyMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Set the current user's end-to-end encryption public key
+ */
+export const useSetMyPublicKey = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setMyPublicKey>>, TError,{data: BodyType<PublicKeyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setMyPublicKey>>,
+        TError,
+        {data: BodyType<PublicKeyInput>},
+        TContext
+      > => {
+      return useMutation(getSetMyPublicKeyMutationOptions(options));
+    }
 
 export const getListGroupsUrl = () => {
 
@@ -508,6 +582,156 @@ export const useAddGroupMember = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getAddGroupMemberMutationOptions(options));
+    }
+
+export const getGetMyGroupKeyUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/key`
+}
+
+/**
+ * Returns the group's symmetric encryption key, wrapped with the current user's public key. Returns wrappedKey null if it has not been shared with this user yet.
+ * @summary Get the current user's wrapped end-to-end encryption key for a group
+ */
+export const getMyGroupKey = async (groupId: string, options?: RequestInit): Promise<GroupKeyResponse> => {
+
+  return customFetch<GroupKeyResponse>(getGetMyGroupKeyUrl(groupId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyGroupKeyQueryKey = (groupId: string,) => {
+    return [
+    `/api/groups/${groupId}/key`
+    ] as const;
+    }
+
+
+export const getGetMyGroupKeyQueryOptions = <TData = Awaited<ReturnType<typeof getMyGroupKey>>, TError = ErrorType<void>>(groupId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyGroupKey>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyGroupKeyQueryKey(groupId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyGroupKey>>> = ({ signal }) => getMyGroupKey(groupId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: groupId !== null && groupId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyGroupKey>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyGroupKeyQueryResult = NonNullable<Awaited<ReturnType<typeof getMyGroupKey>>>
+export type GetMyGroupKeyQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the current user's wrapped end-to-end encryption key for a group
+ */
+
+export function useGetMyGroupKey<TData = Awaited<ReturnType<typeof getMyGroupKey>>, TError = ErrorType<void>>(
+ groupId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyGroupKey>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyGroupKeyQueryOptions(groupId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSetGroupKeyUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/keys`
+}
+
+/**
+ * Stores a copy of the group's symmetric key, wrapped with the target member's public key. Called by any member who already holds the decrypted group key (e.g. the creator, or when re-sharing with a newly-invited member).
+ * @summary Share a wrapped copy of the group's encryption key with a member
+ */
+export const setGroupKey = async (groupId: string,
+    groupKeyInput: GroupKeyInput, options?: RequestInit): Promise<GroupKeyResponse> => {
+
+  return customFetch<GroupKeyResponse>(getSetGroupKeyUrl(groupId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(groupKeyInput)
+  }
+);}
+
+
+
+
+export const getSetGroupKeyMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setGroupKey>>, TError,{groupId: string;data: BodyType<GroupKeyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setGroupKey>>, TError,{groupId: string;data: BodyType<GroupKeyInput>}, TContext> => {
+
+const mutationKey = ['setGroupKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setGroupKey>>, {groupId: string;data: BodyType<GroupKeyInput>}> = (props) => {
+          const {groupId,data} = props ?? {};
+
+          return  setGroupKey(groupId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetGroupKeyMutationResult = NonNullable<Awaited<ReturnType<typeof setGroupKey>>>
+    export type SetGroupKeyMutationBody = BodyType<GroupKeyInput>
+    export type SetGroupKeyMutationError = ErrorType<void>
+
+    /**
+ * @summary Share a wrapped copy of the group's encryption key with a member
+ */
+export const useSetGroupKey = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setGroupKey>>, TError,{groupId: string;data: BodyType<GroupKeyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setGroupKey>>,
+        TError,
+        {groupId: string;data: BodyType<GroupKeyInput>},
+        TContext
+      > => {
+      return useMutation(getSetGroupKeyMutationOptions(options));
     }
 
 export const getRemoveGroupMemberUrl = (groupId: string,

@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth, useUser, SignOutButton } from "@clerk/react";
 import { ReactNode } from "react";
 import { LogOut, Settings, MessageCircle, Home } from "lucide-react";
+import { EncryptionProvider } from "@/hooks/use-encryption";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
@@ -15,6 +16,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   }
 
   return (
+    <EncryptionProvider>
     <div className="flex h-[100dvh] w-full bg-background overflow-hidden">
       {/* Sidebar */}
       <aside className="w-64 border-r border-border bg-sidebar flex flex-col">
@@ -52,5 +54,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
         {children}
       </main>
     </div>
+    </EncryptionProvider>
   );
 }

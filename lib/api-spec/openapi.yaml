@@ -47,6 +47,28 @@ paths:
               schema:
                 $ref: "#/components/schemas/UserProfile"
 
+  /users/me/public-key:
+    put:
+      operationId: setMyPublicKey
+      tags: [users]
+      summary: Set the current user's end-to-end encryption public key
+      description: >
+        Uploads the client-generated RSA-OAEP public key used to wrap
+        per-group encryption keys for this user. Idempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicKeyInput"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
   /groups:
     get:
       operationId: listGroups
@@ -126,6 +148,63 @@ paths:
                 $ref: "#/components/schemas/GroupMember"
         "404":
           description: User with that email not found
+
+  /groups/{groupId}/key:
+    get:
+      operationId: getMyGroupKey
+      tags: [groups]
+      summary: Get the current user's wrapped end-to-end encryption key for a group
+      description: >
+        Returns the group's symmetric encryption key, wrapped with the
+        current user's public key. Returns wrappedKey null if it has not
+        been shared with this user yet.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Wrapped group key, if shared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupKeyResponse"
+        "404":
+          description: Not found
+
+  /groups/{groupId}/keys:
+    post:
+      operationId: setGroupKey
+      tags: [groups]
+      summary: Share a wrapped copy of the group's encryption key with a member
+      description: >
+        Stores a copy of the group's symmetric key, wrapped with the target
+        member's public key. Called by any member who already holds the
+        decrypted group key (e.g. the creator, or when re-sharing with a
+        newly-invited member).
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupKeyInput"
+      responses:
+        "201":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupKeyResponse"
+        "404":
+          description: Not found
 
   /groups/{groupId}/members/{userId}:
     delete:
@@ -228,8 +307,18 @@ components:
           type: string
         avatarUrl:
           type: ["string", "null"]
+        publicKey:
+          type: ["string", "null"]
         createdAt:
           type: string
+
+    PublicKeyInput:
+      type: object
+      required: [publicKey]
+      properties:
+        publicKey:
+          type: string
+          minLength: 1
 
     Group:
       type: object
@@ -260,7 +349,7 @@ components:
 
     GroupMember:
       type: object
-      required: [userId, name, email, role, joinedAt]
+      required: [userId, name, email, role, joinedAt, hasEncryptionKey]
       properties:
         userId:
           type: string
@@ -270,10 +359,33 @@ components:
           type: string
         avatarUrl:
           type: ["string", "null"]
+        publicKey:
+          type: ["string", "null"]
+        hasEncryptionKey:
+          type: boolean
         role:
           type: string
         joinedAt:
           type: string
+
+    GroupKeyResponse:
+      type: object
+      required: [groupId, wrappedKey]
+      properties:
+        groupId:
+          type: string
+        wrappedKey:
+          type: ["string", "null"]
+
+    GroupKeyInput:
+      type: object
+      required: [userId, wrappedKey]
+      properties:
+        userId:
+          type: string
+        wrappedKey:
+          type: string
+          minLength: 1
 
     GroupMemberInput:
       type: object

@@ -26,6 +26,28 @@ export const GetMyProfileResponse = zod.object({
   "email": zod.string(),
   "name": zod.string(),
   "avatarUrl": zod.string().nullish(),
+  "publicKey": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * Uploads the client-generated RSA-OAEP public key used to wrap per-group encryption keys for this user. Idempotent.
+ * @summary Set the current user's end-to-end encryption public key
+ */
+
+
+
+export const SetMyPublicKeyBody = zod.object({
+  "publicKey": zod.string().min(1)
+})
+
+export const SetMyPublicKeyResponse = zod.object({
+  "id": zod.string(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "publicKey": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -83,6 +105,8 @@ export const GetGroupResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "avatarUrl": zod.string().nullish(),
+  "publicKey": zod.string().nullish(),
+  "hasEncryptionKey": zod.boolean(),
   "role": zod.string(),
   "joinedAt": zod.string()
 }))
@@ -105,8 +129,46 @@ export const AddGroupMemberResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "avatarUrl": zod.string().nullish(),
+  "publicKey": zod.string().nullish(),
+  "hasEncryptionKey": zod.boolean(),
   "role": zod.string(),
   "joinedAt": zod.string()
+})
+
+
+/**
+ * Returns the group's symmetric encryption key, wrapped with the current user's public key. Returns wrappedKey null if it has not been shared with this user yet.
+ * @summary Get the current user's wrapped end-to-end encryption key for a group
+ */
+export const GetMyGroupKeyParams = zod.object({
+  "groupId": zod.coerce.string()
+})
+
+export const GetMyGroupKeyResponse = zod.object({
+  "groupId": zod.string(),
+  "wrappedKey": zod.string().nullable()
+})
+
+
+/**
+ * Stores a copy of the group's symmetric key, wrapped with the target member's public key. Called by any member who already holds the decrypted group key (e.g. the creator, or when re-sharing with a newly-invited member).
+ * @summary Share a wrapped copy of the group's encryption key with a member
+ */
+export const SetGroupKeyParams = zod.object({
+  "groupId": zod.coerce.string()
+})
+
+
+
+
+export const SetGroupKeyBody = zod.object({
+  "userId": zod.string(),
+  "wrappedKey": zod.string().min(1)
+})
+
+export const SetGroupKeyResponse = zod.object({
+  "groupId": zod.string(),
+  "wrappedKey": zod.string().nullable()
 })
 
 

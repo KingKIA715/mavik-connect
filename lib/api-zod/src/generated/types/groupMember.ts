@@ -12,6 +12,9 @@ export interface GroupMember {
   email: string;
   /** @nullable */
   avatarUrl?: string | null;
+  /** @nullable */
+  publicKey?: string | null;
+  hasEncryptionKey: boolean;
   role: string;
   joinedAt: string;
 }

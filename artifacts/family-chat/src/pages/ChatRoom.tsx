@@ -7,6 +7,7 @@ import {
   useSendMessage, 
   useAddGroupMember,
   useGetMyProfile,
+  useSetGroupKey,
   getListMessagesQueryKey,
   getGetGroupQueryKey
 } from "@workspace/api-client-react";
@@ -17,8 +18,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Video, Send, UserPlus, Users } from "lucide-react";
+import { Video, Send, UserPlus, Users, Lock, ShieldAlert } from "lucide-react";
 import { format } from "date-fns";
+import { useEncryption, useMyGroupKey, shareGroupKeyWithMember } from "@/hooks/use-encryption";
+import { encryptMessage, decryptMessage, isEncryptedPayload } from "@/lib/crypto";
 
 export default function ChatRoom() {
   const { groupId } = useParams<{ groupId: string }>();
@@ -28,13 +31,17 @@ export default function ChatRoom() {
   
   const sendMessage = useSendMessage();
   const addMember = useAddGroupMember();
+  const setGroupKey = useSetGroupKey();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  
+  const identity = useEncryption();
+  const { groupKey, status: groupKeyStatus } = useMyGroupKey(groupId, identity?.privateKey ?? null);
+
   const [content, setContent] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [isInviteOpen, setIsInviteOpen] = useState(false);
-  
+  const [decrypted, setDecrypted] = useState<Record<string, string>>({});
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const { isConnected, onMessageRef } = useWebSocket(groupId);
 
@@ -56,11 +63,56 @@ export default function ChatRoom() {
     };
   }, [groupId, queryClient, onMessageRef]);
 
-  const handleSend = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!content.trim() || !groupId) return;
+  // Decrypt messages as they arrive/load, whenever we have the group key
+  useEffect(() => {
+    if (!groupKey || !messages) return;
+    let cancelled = false;
+    (async () => {
+      const next: Record<string, string> = {};
+      for (const msg of messages) {
+        if (!isEncryptedPayload(msg.content)) {
+          next[msg.id] = msg.content;
+          continue;
+        }
+        try {
+          next[msg.id] = await decryptMessage(groupKey, msg.content);
+        } catch {
+          next[msg.id] = "";
+        }
+      }
+      if (!cancelled) setDecrypted(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [groupKey, messages]);
 
-    sendMessage.mutate({ groupId, data: { content } }, {
+  // Re-share the group key with any member who now has a public key but no
+  // wrapped key yet (e.g. they just opened the app for the first time).
+  useEffect(() => {
+    if (!groupKey || !group || !groupId) return;
+    for (const member of group.members) {
+      if (!member.hasEncryptionKey && member.publicKey) {
+        shareGroupKeyWithMember({
+          groupId,
+          groupKey,
+          memberUserId: member.userId,
+          memberPublicKey: member.publicKey,
+          setGroupKey: (args) => setGroupKey.mutateAsync(args),
+        }).then(() => {
+          queryClient.invalidateQueries({ queryKey: getGetGroupQueryKey(groupId) });
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupKey, group, groupId]);
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!content.trim() || !groupId || !groupKey) return;
+
+    const encrypted = await encryptMessage(groupKey, content);
+    sendMessage.mutate({ groupId, data: { content: encrypted } }, {
       onSuccess: () => setContent("")
     });
   };
@@ -70,10 +122,21 @@ export default function ChatRoom() {
     if (!inviteEmail.trim() || !groupId) return;
 
     addMember.mutate({ groupId, data: { email: inviteEmail } }, {
-      onSuccess: () => {
+      onSuccess: async (invitee) => {
         toast({ title: "Member added successfully!" });
         setInviteEmail("");
         setIsInviteOpen(false);
+
+        if (groupKey && invitee.publicKey) {
+          await shareGroupKeyWithMember({
+            groupId,
+            groupKey,
+            memberUserId: invitee.userId,
+            memberPublicKey: invitee.publicKey,
+            setGroupKey: (args) => setGroupKey.mutateAsync(args),
+          });
+        }
+
         queryClient.invalidateQueries({ queryKey: getGetGroupQueryKey(groupId) });
       },
       onError: (err: any) => {
@@ -99,6 +162,18 @@ export default function ChatRoom() {
             <Users className="w-3.5 h-3.5" />
             {group.members.length} members
           </div>
+          {groupKeyStatus === "ready" && (
+            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+              <Lock className="w-3.5 h-3.5" />
+              Encrypted
+            </div>
+          )}
+          {groupKeyStatus === "missing" && (
+            <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full">
+              <ShieldAlert className="w-3.5 h-3.5" />
+              Waiting for access
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -177,7 +252,7 @@ export default function ChatRoom() {
                         'bg-white border border-border text-foreground rounded-tl-sm'
                       }
                     `}>
-                      {msg.content}
+                      {isEncryptedPayload(msg.content) ? (decrypted[msg.id] ?? "🔒 Decrypting…") : msg.content}
                     </div>
                     <span className="text-[10px] text-muted-foreground/60 mt-1 px-1">
                       {format(new Date(msg.createdAt), "h:mm a")}
@@ -202,7 +277,7 @@ export default function ChatRoom() {
           <Button 
             type="submit" 
             size="icon" 
-            disabled={!content.trim() || sendMessage.isPending}
+            disabled={!content.trim() || sendMessage.isPending || !groupKey}
             className="rounded-full w-12 h-12 shadow-md flex-shrink-0 absolute right-1 bottom-1"
           >
             <Send className="w-5 h-5 ml-1" />

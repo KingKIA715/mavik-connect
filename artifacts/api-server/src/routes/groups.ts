@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
+  groupKeysTable,
   groupMembersTable,
   groupsTable,
   messagesTable,
@@ -13,7 +14,10 @@ import {
   CreateGroupBody,
   CreateGroupResponse,
   GetGroupResponse,
+  GetMyGroupKeyResponse,
   ListGroupsResponseItem,
+  SetGroupKeyBody,
+  SetGroupKeyResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { parseGroupId, isGroupMember } from "../lib/groupAccess";
@@ -157,6 +161,7 @@ router.get("/groups/:groupId", async (req, res): Promise<void> => {
       name: usersTable.name,
       email: usersTable.email,
       avatarUrl: usersTable.avatarUrl,
+      publicKey: usersTable.publicKey,
       role: groupMembersTable.role,
       joinedAt: groupMembersTable.joinedAt,
     })
@@ -164,13 +169,22 @@ router.get("/groups/:groupId", async (req, res): Promise<void> => {
     .innerJoin(usersTable, eq(groupMembersTable.userId, usersTable.id))
     .where(eq(groupMembersTable.groupId, groupId));
 
+  const keyHolders = await db
+    .select({ userId: groupKeysTable.userId })
+    .from(groupKeysTable)
+    .where(eq(groupKeysTable.groupId, groupId));
+  const keyHolderSet = new Set(keyHolders.map((k) => k.userId));
+
   res.json(
     GetGroupResponse.parse({
       id: String(group.id),
       name: group.name,
       createdBy: group.createdBy,
       createdAt: group.createdAt,
-      members,
+      members: members.map((m) => ({
+        ...m,
+        hasEncryptionKey: keyHolderSet.has(m.userId),
+      })),
     }),
   );
 });
@@ -225,8 +239,88 @@ router.post("/groups/:groupId/members", async (req, res): Promise<void> => {
       name: invitee.name,
       email: invitee.email,
       avatarUrl: invitee.avatarUrl,
+      publicKey: invitee.publicKey,
+      hasEncryptionKey: false,
       role: membership?.role ?? "member",
       joinedAt: membership?.joinedAt ?? new Date(),
+    }),
+  );
+});
+
+router.get("/groups/:groupId/key", async (req, res): Promise<void> => {
+  const groupId = parseGroupId(req.params.groupId);
+  if (groupId === null) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const userId = req.userId!;
+  const member = await isGroupMember(groupId, userId);
+  if (!member) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const [key] = await db
+    .select({ wrappedKey: groupKeysTable.wrappedKey })
+    .from(groupKeysTable)
+    .where(
+      and(
+        eq(groupKeysTable.groupId, groupId),
+        eq(groupKeysTable.userId, userId),
+      ),
+    );
+
+  res.json(
+    GetMyGroupKeyResponse.parse({
+      groupId: String(groupId),
+      wrappedKey: key?.wrappedKey ?? null,
+    }),
+  );
+});
+
+router.post("/groups/:groupId/keys", async (req, res): Promise<void> => {
+  const groupId = parseGroupId(req.params.groupId);
+  if (groupId === null) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const requesterId = req.userId!;
+  const requesterIsMember = await isGroupMember(groupId, requesterId);
+  if (!requesterIsMember) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const parsed = SetGroupKeyBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const targetIsMember = await isGroupMember(groupId, parsed.data.userId);
+  if (!targetIsMember) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  await db
+    .insert(groupKeysTable)
+    .values({
+      groupId,
+      userId: parsed.data.userId,
+      wrappedKey: parsed.data.wrappedKey,
+    })
+    .onConflictDoUpdate({
+      target: [groupKeysTable.groupId, groupKeysTable.userId],
+      set: { wrappedKey: parsed.data.wrappedKey },
+    });
+
+  res.status(201).json(
+    SetGroupKeyResponse.parse({
+      groupId: String(groupId),
+      wrappedKey: parsed.data.wrappedKey,
     }),
   );
 });
