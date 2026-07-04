@@ -84,7 +84,7 @@ export default function Dashboard() {
                 />
               </div>
               <Button type="submit" disabled={isCreating || !identity} className="w-full">
-                {isCreating ? "Creating..." : "Create Group"}
+                {isCreating ? "Creating..." : !identity ? "Setting up encryption..." : "Create Group"}
               </Button>
             </form>
           </DialogContent>

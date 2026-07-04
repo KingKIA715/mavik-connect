@@ -33,16 +33,29 @@ export function EncryptionProvider({ children }: { children: ReactNode }) {
   const setPublicKey = useSetMyPublicKey();
   const queryClient = useQueryClient();
   const [identity, setIdentity] = useState<EncryptionIdentity>(null);
-  const initRef = useRef<string | null>(null);
+  const inFlightRef = useRef<string | null>(null);
+  const doneRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!profile?.id || initRef.current === profile.id) return;
-    initRef.current = profile.id;
+    if (!profile?.id) return;
+    // Already set up (or currently setting up) for this exact profile snapshot — skip.
+    if (doneRef.current === profile.id || inFlightRef.current === profile.id) return;
+    inFlightRef.current = profile.id;
 
     ensureKeyPair(profile.id, profile.publicKey, async (publicKey) => {
       await setPublicKey.mutateAsync({ data: { publicKey } });
       queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
-    }).then(setIdentity);
+    })
+      .then((result) => {
+        doneRef.current = profile.id;
+        setIdentity(result);
+      })
+      .catch((err) => {
+        console.error("Failed to set up encryption identity, will retry:", err);
+      })
+      .finally(() => {
+        if (inFlightRef.current === profile.id) inFlightRef.current = null;
+      });
   }, [profile?.id, profile?.publicKey, queryClient, setPublicKey]);
 
   return createElement(EncryptionContext.Provider, { value: identity }, children);
