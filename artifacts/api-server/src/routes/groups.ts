@@ -22,6 +22,7 @@ import {
 import { requireAuth } from "../middlewares/requireAuth";
 import { parseGroupId, isGroupMember } from "../lib/groupAccess";
 import { broadcastToGroup } from "../ws/hub";
+import { toIso, toIsoOrNull } from "../lib/serialize";
 
 const router: IRouter = Router();
 
@@ -87,9 +88,9 @@ router.get("/groups", async (req, res): Promise<void> => {
       id: String(group.id),
       name: group.name,
       createdBy: group.createdBy,
-      createdAt: group.createdAt,
+      createdAt: toIso(group.createdAt),
       memberCount: memberCountByGroup.get(group.id) ?? 0,
-      lastMessageAt: lastMessage?.createdAt ?? null,
+      lastMessageAt: toIsoOrNull(lastMessage?.createdAt),
       lastMessagePreview: lastMessage?.content ?? null,
     };
   });
@@ -124,7 +125,7 @@ router.post("/groups", async (req, res): Promise<void> => {
       id: String(group.id),
       name: group.name,
       createdBy: group.createdBy,
-      createdAt: group.createdAt,
+      createdAt: toIso(group.createdAt),
       memberCount: 1,
       lastMessageAt: null,
       lastMessagePreview: null,
@@ -180,9 +181,10 @@ router.get("/groups/:groupId", async (req, res): Promise<void> => {
       id: String(group.id),
       name: group.name,
       createdBy: group.createdBy,
-      createdAt: group.createdAt,
+      createdAt: toIso(group.createdAt),
       members: members.map((m) => ({
         ...m,
+        joinedAt: toIso(m.joinedAt),
         hasEncryptionKey: keyHolderSet.has(m.userId),
       })),
     }),
@@ -242,7 +244,7 @@ router.post("/groups/:groupId/members", async (req, res): Promise<void> => {
       publicKey: invitee.publicKey,
       hasEncryptionKey: false,
       role: membership?.role ?? "member",
-      joinedAt: membership?.joinedAt ?? new Date(),
+      joinedAt: toIso(membership?.joinedAt ?? new Date()),
     }),
   );
 });

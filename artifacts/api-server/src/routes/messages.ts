@@ -9,6 +9,7 @@ import {
 import { requireAuth } from "../middlewares/requireAuth";
 import { parseGroupId, isGroupMember } from "../lib/groupAccess";
 import { broadcastToGroup } from "../ws/hub";
+import { toIso } from "../lib/serialize";
 
 const router: IRouter = Router();
 
@@ -50,6 +51,7 @@ router.get(
           ...row,
           id: String(row.id),
           groupId: String(row.groupId),
+          createdAt: toIso(row.createdAt),
         }),
       ),
     );
@@ -95,7 +97,7 @@ router.post(
       senderName: sender?.name ?? "Family Member",
       senderAvatarUrl: sender?.avatarUrl ?? null,
       content: message.content,
-      createdAt: message.createdAt,
+      createdAt: toIso(message.createdAt),
     });
 
     broadcastToGroup(groupId, { type: "message", message: payload });

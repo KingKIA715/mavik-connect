@@ -9,6 +9,7 @@ import {
 } from "@workspace/db";
 import { GetRecentActivityResponseItem } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
+import { toIso } from "../lib/serialize";
 
 const router: IRouter = Router();
 
@@ -47,6 +48,7 @@ router.get("/activity", requireAuth, async (req, res): Promise<void> => {
       GetRecentActivityResponseItem.parse({
         ...row,
         groupId: String(row.groupId),
+        createdAt: toIso(row.createdAt),
       }),
     ),
   );

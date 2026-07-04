@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { GetMyProfileResponse, SetMyPublicKeyBody } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
+import { toIso } from "../lib/serialize";
 
 const router: IRouter = Router();
 
@@ -17,7 +18,7 @@ router.get("/users/me", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(GetMyProfileResponse.parse(user));
+  res.json(GetMyProfileResponse.parse({ ...user, createdAt: toIso(user.createdAt) }));
 });
 
 router.put(
@@ -41,7 +42,7 @@ router.put(
       return;
     }
 
-    res.json(GetMyProfileResponse.parse(user));
+    res.json(GetMyProfileResponse.parse({ ...user, createdAt: toIso(user.createdAt) }));
   },
 );
 
