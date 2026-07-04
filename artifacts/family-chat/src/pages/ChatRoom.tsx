@@ -18,7 +18,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Video, Send, UserPlus, Users, Lock, ShieldAlert } from "lucide-react";
+import { Video, Send, UserPlus, Users, Lock, ShieldAlert, Crown } from "lucide-react";
 import { format } from "date-fns";
 import { useEncryption, useMyGroupKey, shareGroupKeyWithMember } from "@/hooks/use-encryption";
 import { encryptMessage, decryptMessage, isEncryptedPayload } from "@/lib/crypto";
@@ -40,6 +40,7 @@ export default function ChatRoom() {
   const [content, setContent] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [decrypted, setDecrypted] = useState<Record<string, string>>({});
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -158,10 +159,65 @@ export default function ChatRoom() {
       <header className="flex-none h-16 border-b border-border bg-white px-6 flex items-center justify-between shadow-sm z-10">
         <div className="flex items-center gap-4">
           <h2 className="font-serif text-xl font-bold text-foreground">{group.name}</h2>
-          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
-            <Users className="w-3.5 h-3.5" />
-            {group.members.length} members
-          </div>
+          <Dialog open={isMembersOpen} onOpenChange={setIsMembersOpen}>
+            <DialogTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground bg-muted hover:bg-muted/70 transition-colors px-2.5 py-1 rounded-full"
+              >
+                <Users className="w-3.5 h-3.5" />
+                {group.members.length} members
+              </button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="font-serif text-xl">Family Members</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 pt-2 max-h-96 overflow-y-auto">
+                {group.members.map((member) => (
+                  <div key={member.userId} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
+                    <Avatar className="w-10 h-10 border shadow-sm flex-shrink-0">
+                      {member.avatarUrl && <AvatarImage src={member.avatarUrl} />}
+                      <AvatarFallback className="bg-secondary text-secondary-foreground text-sm">
+                        {member.name.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-medium truncate">{member.name}</span>
+                        {member.role === "owner" && (
+                          <Crown className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                    </div>
+                    {member.hasEncryptionKey ? (
+                      <div className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full flex-shrink-0">
+                        <Lock className="w-3 h-3" />
+                        Encrypted
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded-full flex-shrink-0">
+                        <ShieldAlert className="w-3 h-3" />
+                        Pending
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <Button
+                variant="outline"
+                className="w-full mt-2"
+                onClick={() => {
+                  setIsMembersOpen(false);
+                  setIsInviteOpen(true);
+                }}
+              >
+                <UserPlus className="w-4 h-4 mr-2" />
+                Invite Someone New
+              </Button>
+            </DialogContent>
+          </Dialog>
           {groupKeyStatus === "ready" && (
             <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
               <Lock className="w-3.5 h-3.5" />
@@ -179,8 +235,9 @@ export default function ChatRoom() {
         <div className="flex items-center gap-3">
           <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
             <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <UserPlus className="w-5 h-5" />
+              <Button variant="ghost" size="sm" className="rounded-full gap-1.5 text-muted-foreground">
+                <UserPlus className="w-4 h-4" />
+                Invite
               </Button>
             </DialogTrigger>
             <DialogContent>
