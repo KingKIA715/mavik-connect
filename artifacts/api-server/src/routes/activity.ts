@@ -13,8 +13,26 @@ import { toIso } from "../lib/serialize";
 
 const router: IRouter = Router();
 
+function parsePaginationQuery(query: Record<string, unknown>): {
+  limit: number;
+  offset: number;
+} {
+  const rawLimit = Number(query.limit);
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit > 0 && rawLimit <= 100
+      ? Math.floor(rawLimit)
+      : 30;
+
+  const rawOffset = Number(query.offset);
+  const offset =
+    Number.isFinite(rawOffset) && rawOffset >= 0 ? Math.floor(rawOffset) : 0;
+
+  return { limit, offset };
+}
+
 router.get("/activity", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
+  const { limit, offset } = parsePaginationQuery(req.query);
 
   const memberships = await db
     .select({ groupId: groupMembersTable.groupId })
@@ -41,7 +59,8 @@ router.get("/activity", requireAuth, async (req, res): Promise<void> => {
     .innerJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
     .where(inArray(messagesTable.groupId, groupIds))
     .orderBy(desc(messagesTable.createdAt))
-    .limit(30);
+    .limit(limit)
+    .offset(offset);
 
   res.json(
     rows.map((row) =>
