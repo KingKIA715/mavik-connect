@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
+  version: "0.2.0"
   description: API specification
 servers:
   - url: /api
@@ -231,12 +231,30 @@ paths:
       operationId: listMessages
       tags: [messages]
       summary: List messages in a group
+      description: >
+        Returns messages oldest-first. Use limit/offset query params for pagination.
+        Defaults to 50 messages per page, maximum 100.
       parameters:
         - name: groupId
           in: path
           required: true
           schema:
             type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         "200":
           description: List of messages, oldest first
@@ -275,6 +293,25 @@ paths:
       operationId: getRecentActivity
       tags: [activity]
       summary: Get recent messages across all of the user's groups
+      description: >
+        Returns recent activity newest-first. Use limit/offset query params for pagination.
+        Defaults to 30 items per page, maximum 100.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         "200":
           description: Recent activity feed
