@@ -15,6 +15,23 @@ const router: IRouter = Router();
 
 router.use(requireAuth);
 
+function parsePaginationQuery(query: Record<string, unknown>): {
+  limit: number;
+  offset: number;
+} {
+  const rawLimit = Number(query.limit);
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit > 0 && rawLimit <= 100
+      ? Math.floor(rawLimit)
+      : 50;
+
+  const rawOffset = Number(query.offset);
+  const offset =
+    Number.isFinite(rawOffset) && rawOffset >= 0 ? Math.floor(rawOffset) : 0;
+
+  return { limit, offset };
+}
+
 router.get(
   "/groups/:groupId/messages",
   async (req, res): Promise<void> => {
@@ -30,6 +47,8 @@ router.get(
       return;
     }
 
+    const { limit, offset } = parsePaginationQuery(req.query);
+
     const rows = await db
       .select({
         id: messagesTable.id,
@@ -43,7 +62,9 @@ router.get(
       .from(messagesTable)
       .innerJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
       .where(eq(messagesTable.groupId, groupId))
-      .orderBy(asc(messagesTable.createdAt));
+      .orderBy(asc(messagesTable.createdAt))
+      .limit(limit)
+      .offset(offset);
 
     res.json(
       rows.map((row) =>
