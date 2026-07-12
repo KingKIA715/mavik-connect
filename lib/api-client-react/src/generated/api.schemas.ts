@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Api
  * API specification
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 export interface HealthStatus {
   status: string;
@@ -79,6 +79,14 @@ export interface GroupDetail {
   members: GroupMember[];
 }
 
+export type MessageType = typeof MessageType[keyof typeof MessageType];
+
+
+export const MessageType = {
+  text: 'text',
+  file: 'file',
+} as const;
+
 export interface Message {
   id: string;
   groupId: string;
@@ -87,12 +95,34 @@ export interface Message {
   /** @nullable */
   senderAvatarUrl?: string | null;
   content: string;
+  type: MessageType;
+  /** @nullable */
+  fileName?: string | null;
+  /** @nullable */
+  mimeType?: string | null;
+  /** @nullable */
+  fileSize?: number | null;
   createdAt: string;
 }
+
+export type MessageInputType = typeof MessageInputType[keyof typeof MessageInputType];
+
+
+export const MessageInputType = {
+  text: 'text',
+  file: 'file',
+} as const;
 
 export interface MessageInput {
   /** @minLength 1 */
   content: string;
+  type?: MessageInputType;
+  /** @nullable */
+  fileName?: string | null;
+  /** @nullable */
+  mimeType?: string | null;
+  /** @nullable */
+  fileSize?: number | null;
 }
 
 export interface ActivityItem {
@@ -103,4 +133,130 @@ export interface ActivityItem {
   content: string;
   createdAt: string;
 }
+
+export interface SearchUserResult {
+  id: string;
+  email: string;
+  name: string;
+  /** @nullable */
+  avatarUrl?: string | null;
+  /** @nullable */
+  publicKey?: string | null;
+}
+
+export interface DmThreadInput {
+  email: string;
+}
+
+export interface DmThread {
+  id: string;
+  otherUserId: string;
+  otherUserName: string;
+  otherUserEmail: string;
+  /** @nullable */
+  otherUserAvatarUrl?: string | null;
+  createdAt: string;
+  /** @nullable */
+  lastMessageAt?: string | null;
+  /** @nullable */
+  lastMessagePreview?: string | null;
+}
+
+export type DmMessageType = typeof DmMessageType[keyof typeof DmMessageType];
+
+
+export const DmMessageType = {
+  text: 'text',
+  file: 'file',
+} as const;
+
+export interface DmMessage {
+  id: string;
+  threadId: string;
+  senderId: string;
+  senderName: string;
+  /** @nullable */
+  senderAvatarUrl?: string | null;
+  content: string;
+  type: DmMessageType;
+  /** @nullable */
+  fileName?: string | null;
+  /** @nullable */
+  mimeType?: string | null;
+  /** @nullable */
+  fileSize?: number | null;
+  createdAt: string;
+}
+
+export type DmMessageInputType = typeof DmMessageInputType[keyof typeof DmMessageInputType];
+
+
+export const DmMessageInputType = {
+  text: 'text',
+  file: 'file',
+} as const;
+
+export interface DmMessageInput {
+  /** @minLength 1 */
+  content: string;
+  type?: DmMessageInputType;
+  /** @nullable */
+  fileName?: string | null;
+  /** @nullable */
+  mimeType?: string | null;
+  /** @nullable */
+  fileSize?: number | null;
+}
+
+export interface DmKeyResponse {
+  threadId: string;
+  /** @nullable */
+  wrappedKey: string | null;
+}
+
+export interface DmKeyInput {
+  userId: string;
+  /** @minLength 1 */
+  wrappedKey: string;
+}
+
+export type SearchUserByEmailParams = {
+email: string;
+};
+
+export type ListMessagesParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
+};
+
+export type ListDmMessagesParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
+};
+
+export type GetRecentActivityParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
+};
 

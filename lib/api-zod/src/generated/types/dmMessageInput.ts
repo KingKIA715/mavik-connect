@@ -5,22 +5,16 @@
  * API specification
  * OpenAPI spec version: 0.2.0
  */
-import type { MessageType } from './messageType';
+import type { DmMessageInputType } from './dmMessageInputType';
 
-export interface Message {
-  id: string;
-  groupId: string;
-  senderId: string;
-  senderName: string;
-  /** @nullable */
-  senderAvatarUrl?: string | null;
+export interface DmMessageInput {
+  /** @minLength 1 */
   content: string;
-  type: MessageType;
+  type?: DmMessageInputType;
   /** @nullable */
   fileName?: string | null;
   /** @nullable */
   mimeType?: string | null;
   /** @nullable */
   fileSize?: number | null;
-  createdAt: string;
 }

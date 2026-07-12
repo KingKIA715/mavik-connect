@@ -6,12 +6,14 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export interface Group {
+export interface DmThread {
   id: string;
-  name: string;
-  createdBy: string;
+  otherUserId: string;
+  otherUserName: string;
+  otherUserEmail: string;
+  /** @nullable */
+  otherUserAvatarUrl?: string | null;
   createdAt: string;
-  memberCount: number;
   /** @nullable */
   lastMessageAt?: string | null;
   /** @nullable */

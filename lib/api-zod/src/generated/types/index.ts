@@ -3,10 +3,19 @@
  * Do not edit manually.
  * Api
  * API specification
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 
 export * from './activityItem';
+export * from './dmKeyInput';
+export * from './dmKeyResponse';
+export * from './dmMessage';
+export * from './dmMessageInput';
+export * from './dmMessageInputType';
+export * from './dmMessageType';
+export * from './dmThread';
+export * from './dmThreadInput';
+export * from './getRecentActivityParams';
 export * from './group';
 export * from './groupDetail';
 export * from './groupInput';
@@ -15,7 +24,13 @@ export * from './groupKeyResponse';
 export * from './groupMember';
 export * from './groupMemberInput';
 export * from './healthStatus';
+export * from './listDmMessagesParams';
+export * from './listMessagesParams';
 export * from './message';
 export * from './messageInput';
+export * from './messageInputType';
+export * from './messageType';
 export * from './publicKeyInput';
+export * from './searchUserByEmailParams';
+export * from './searchUserResult';
 export * from './userProfile';

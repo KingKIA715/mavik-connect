@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Api
  * API specification
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 import * as zod from 'zod';
 
@@ -49,6 +49,23 @@ export const SetMyPublicKeyResponse = zod.object({
   "avatarUrl": zod.string().nullish(),
   "publicKey": zod.string().nullish(),
   "createdAt": zod.string()
+})
+
+
+/**
+ * Used to start a new DM thread, the same way group invites work. Returns 404 if no registered user matches the given email exactly.
+ * @summary Search for a registered user by exact email match
+ */
+export const SearchUserByEmailQueryParams = zod.object({
+  "email": zod.coerce.string()
+})
+
+export const SearchUserByEmailResponse = zod.object({
+  "id": zod.string(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "publicKey": zod.string().nullish()
 })
 
 
@@ -184,11 +201,27 @@ export const RemoveGroupMemberResponse = zod.void()
 
 
 /**
+ * Returns messages oldest-first. Use limit/offset query params for pagination. Defaults to 50 messages per page, maximum 100.
  * @summary List messages in a group
  */
 export const ListMessagesParams = zod.object({
   "groupId": zod.coerce.string()
 })
+
+export const listMessagesQueryLimitDefault = 50;
+export const listMessagesQueryLimitMax = 100;
+
+export const listMessagesQueryOffsetDefault = 0;
+export const listMessagesQueryOffsetMin = 0;
+
+
+
+export const ListMessagesQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(listMessagesQueryLimitMax).default(listMessagesQueryLimitDefault),
+  "offset": zod.coerce.number().min(listMessagesQueryOffsetMin).default(listMessagesQueryOffsetDefault)
+})
+
+export const listMessagesResponseTypeDefault = `text`;
 
 export const ListMessagesResponseItem = zod.object({
   "id": zod.string(),
@@ -197,6 +230,10 @@ export const ListMessagesResponseItem = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
+  "type": zod.enum(['text', 'file']).default(listMessagesResponseTypeDefault),
+  "fileName": zod.string().nullish(),
+  "mimeType": zod.string().nullish(),
+  "fileSize": zod.number().nullish(),
   "createdAt": zod.string()
 })
 export const ListMessagesResponse = zod.array(ListMessagesResponseItem)
@@ -210,11 +247,17 @@ export const SendMessageParams = zod.object({
 })
 
 
-
+export const sendMessageBodyTypeDefault = `text`;
 
 export const SendMessageBody = zod.object({
-  "content": zod.string().min(1)
+  "content": zod.string().min(1),
+  "type": zod.enum(['text', 'file']).default(sendMessageBodyTypeDefault),
+  "fileName": zod.string().nullish(),
+  "mimeType": zod.string().nullish(),
+  "fileSize": zod.number().nullish()
 })
+
+export const sendMessageResponseTypeDefault = `text`;
 
 export const SendMessageResponse = zod.object({
   "id": zod.string(),
@@ -223,13 +266,195 @@ export const SendMessageResponse = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
+  "type": zod.enum(['text', 'file']).default(sendMessageResponseTypeDefault),
+  "fileName": zod.string().nullish(),
+  "mimeType": zod.string().nullish(),
+  "fileSize": zod.number().nullish(),
   "createdAt": zod.string()
 })
 
 
 /**
+ * @summary List the current user's DM threads
+ */
+export const ListDmThreadsResponseItem = zod.object({
+  "id": zod.string(),
+  "otherUserId": zod.string(),
+  "otherUserName": zod.string(),
+  "otherUserEmail": zod.string(),
+  "otherUserAvatarUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "lastMessageAt": zod.string().nullish(),
+  "lastMessagePreview": zod.string().nullish()
+})
+export const ListDmThreadsResponse = zod.array(ListDmThreadsResponseItem)
+
+
+/**
+ * @summary Start (or get the existing) DM thread with a user by email
+ */
+export const CreateDmThreadBody = zod.object({
+  "email": zod.string()
+})
+
+export const CreateDmThreadResponse = zod.object({
+  "id": zod.string(),
+  "otherUserId": zod.string(),
+  "otherUserName": zod.string(),
+  "otherUserEmail": zod.string(),
+  "otherUserAvatarUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "lastMessageAt": zod.string().nullish(),
+  "lastMessagePreview": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get a DM thread's detail
+ */
+export const GetDmThreadParams = zod.object({
+  "threadId": zod.coerce.string()
+})
+
+export const GetDmThreadResponse = zod.object({
+  "id": zod.string(),
+  "otherUserId": zod.string(),
+  "otherUserName": zod.string(),
+  "otherUserEmail": zod.string(),
+  "otherUserAvatarUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "lastMessageAt": zod.string().nullish(),
+  "lastMessagePreview": zod.string().nullish()
+})
+
+
+/**
+ * Returns the thread's symmetric encryption key, wrapped with the current user's public key. Returns wrappedKey null if it has not been shared with this user yet.
+ * @summary Get the current user's wrapped end-to-end encryption key for a DM thread
+ */
+export const GetMyDmKeyParams = zod.object({
+  "threadId": zod.coerce.string()
+})
+
+export const GetMyDmKeyResponse = zod.object({
+  "threadId": zod.string(),
+  "wrappedKey": zod.string().nullable()
+})
+
+
+/**
+ * Stores a copy of the thread's symmetric key, wrapped with the target participant's public key. Called by whichever participant already holds the decrypted thread key (e.g. the thread creator, or when re-sharing after the other participant sets their public key).
+ * @summary Share a wrapped copy of the DM thread's encryption key with a participant
+ */
+export const SetDmKeyParams = zod.object({
+  "threadId": zod.coerce.string()
+})
+
+
+
+
+export const SetDmKeyBody = zod.object({
+  "userId": zod.string(),
+  "wrappedKey": zod.string().min(1)
+})
+
+export const SetDmKeyResponse = zod.object({
+  "threadId": zod.string(),
+  "wrappedKey": zod.string().nullable()
+})
+
+
+/**
+ * Returns messages oldest-first. Use limit/offset query params for pagination. Defaults to 50 messages per page, maximum 100.
+ * @summary List messages in a DM thread
+ */
+export const ListDmMessagesParams = zod.object({
+  "threadId": zod.coerce.string()
+})
+
+export const listDmMessagesQueryLimitDefault = 50;
+export const listDmMessagesQueryLimitMax = 100;
+
+export const listDmMessagesQueryOffsetDefault = 0;
+export const listDmMessagesQueryOffsetMin = 0;
+
+
+
+export const ListDmMessagesQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(listDmMessagesQueryLimitMax).default(listDmMessagesQueryLimitDefault),
+  "offset": zod.coerce.number().min(listDmMessagesQueryOffsetMin).default(listDmMessagesQueryOffsetDefault)
+})
+
+export const listDmMessagesResponseTypeDefault = `text`;
+
+export const ListDmMessagesResponseItem = zod.object({
+  "id": zod.string(),
+  "threadId": zod.string(),
+  "senderId": zod.string(),
+  "senderName": zod.string(),
+  "senderAvatarUrl": zod.string().nullish(),
+  "content": zod.string(),
+  "type": zod.enum(['text', 'file']).default(listDmMessagesResponseTypeDefault),
+  "fileName": zod.string().nullish(),
+  "mimeType": zod.string().nullish(),
+  "fileSize": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+export const ListDmMessagesResponse = zod.array(ListDmMessagesResponseItem)
+
+
+/**
+ * @summary Send a message in a DM thread
+ */
+export const SendDmMessageParams = zod.object({
+  "threadId": zod.coerce.string()
+})
+
+
+export const sendDmMessageBodyTypeDefault = `text`;
+
+export const SendDmMessageBody = zod.object({
+  "content": zod.string().min(1),
+  "type": zod.enum(['text', 'file']).default(sendDmMessageBodyTypeDefault),
+  "fileName": zod.string().nullish(),
+  "mimeType": zod.string().nullish(),
+  "fileSize": zod.number().nullish()
+})
+
+export const sendDmMessageResponseTypeDefault = `text`;
+
+export const SendDmMessageResponse = zod.object({
+  "id": zod.string(),
+  "threadId": zod.string(),
+  "senderId": zod.string(),
+  "senderName": zod.string(),
+  "senderAvatarUrl": zod.string().nullish(),
+  "content": zod.string(),
+  "type": zod.enum(['text', 'file']).default(sendDmMessageResponseTypeDefault),
+  "fileName": zod.string().nullish(),
+  "mimeType": zod.string().nullish(),
+  "fileSize": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * Returns recent activity newest-first. Use limit/offset query params for pagination. Defaults to 30 items per page, maximum 100.
  * @summary Get recent messages across all of the user's groups
  */
+export const getRecentActivityQueryLimitDefault = 30;
+export const getRecentActivityQueryLimitMax = 100;
+
+export const getRecentActivityQueryOffsetDefault = 0;
+export const getRecentActivityQueryOffsetMin = 0;
+
+
+
+export const GetRecentActivityQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(getRecentActivityQueryLimitMax).default(getRecentActivityQueryLimitDefault),
+  "offset": zod.coerce.number().min(getRecentActivityQueryOffsetMin).default(getRecentActivityQueryOffsetDefault)
+})
+
 export const GetRecentActivityResponseItem = zod.object({
   "groupId": zod.string(),
   "groupName": zod.string(),

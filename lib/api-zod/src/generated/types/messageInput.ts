@@ -3,10 +3,18 @@
  * Do not edit manually.
  * Api
  * API specification
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
+import type { MessageInputType } from './messageInputType';
 
 export interface MessageInput {
   /** @minLength 1 */
   content: string;
+  type?: MessageInputType;
+  /** @nullable */
+  fileName?: string | null;
+  /** @nullable */
+  mimeType?: string | null;
+  /** @nullable */
+  fileSize?: number | null;
 }

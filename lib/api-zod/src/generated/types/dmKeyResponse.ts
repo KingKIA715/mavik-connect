@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export interface GroupMemberInput {
-  email: string;
+export interface DmKeyResponse {
+  threadId: string;
+  /** @nullable */
+  wrappedKey: string | null;
 }

@@ -6,6 +6,6 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export interface GroupMemberInput {
+export interface DmThreadInput {
   email: string;
 }

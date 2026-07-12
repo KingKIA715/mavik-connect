@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Api
  * API specification
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 import {
   useMutation,
@@ -21,6 +21,13 @@ import type {
 
 import type {
   ActivityItem,
+  DmKeyInput,
+  DmKeyResponse,
+  DmMessage,
+  DmMessageInput,
+  DmThread,
+  DmThreadInput,
+  GetRecentActivityParams,
   Group,
   GroupDetail,
   GroupInput,
@@ -29,9 +36,13 @@ import type {
   GroupMember,
   GroupMemberInput,
   HealthStatus,
+  ListDmMessagesParams,
+  ListMessagesParams,
   Message,
   MessageInput,
   PublicKeyInput,
+  SearchUserByEmailParams,
+  SearchUserResult,
   UserProfile
 } from './api.schemas';
 
@@ -288,6 +299,91 @@ export const useSetMyPublicKey = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getSetMyPublicKeyMutationOptions(options));
     }
+
+export const getSearchUserByEmailUrl = (params: SearchUserByEmailParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/users/search?${stringifiedParams}` : `/api/users/search`
+}
+
+/**
+ * Used to start a new DM thread, the same way group invites work. Returns 404 if no registered user matches the given email exactly.
+ * @summary Search for a registered user by exact email match
+ */
+export const searchUserByEmail = async (params: SearchUserByEmailParams, options?: RequestInit): Promise<SearchUserResult> => {
+
+  return customFetch<SearchUserResult>(getSearchUserByEmailUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchUserByEmailQueryKey = (params?: SearchUserByEmailParams,) => {
+    return [
+    `/api/users/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchUserByEmailQueryOptions = <TData = Awaited<ReturnType<typeof searchUserByEmail>>, TError = ErrorType<void>>(params: SearchUserByEmailParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchUserByEmail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchUserByEmailQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchUserByEmail>>> = ({ signal }) => searchUserByEmail(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchUserByEmail>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchUserByEmailQueryResult = NonNullable<Awaited<ReturnType<typeof searchUserByEmail>>>
+export type SearchUserByEmailQueryError = ErrorType<void>
+
+
+/**
+ * @summary Search for a registered user by exact email match
+ */
+
+export function useSearchUserByEmail<TData = Awaited<ReturnType<typeof searchUserByEmail>>, TError = ErrorType<void>>(
+ params: SearchUserByEmailParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchUserByEmail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchUserByEmailQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListGroupsUrl = () => {
 
@@ -806,20 +902,30 @@ export const useRemoveGroupMember = <TError = ErrorType<unknown>,
       return useMutation(getRemoveGroupMemberMutationOptions(options));
     }
 
-export const getListMessagesUrl = (groupId: string,) => {
+export const getListMessagesUrl = (groupId: string,
+    params?: ListMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/groups/${groupId}/messages`
+  return stringifiedParams.length > 0 ? `/api/groups/${groupId}/messages?${stringifiedParams}` : `/api/groups/${groupId}/messages`
 }
 
 /**
+ * Returns messages oldest-first. Use limit/offset query params for pagination. Defaults to 50 messages per page, maximum 100.
  * @summary List messages in a group
  */
-export const listMessages = async (groupId: string, options?: RequestInit): Promise<Message[]> => {
+export const listMessages = async (groupId: string,
+    params?: ListMessagesParams, options?: RequestInit): Promise<Message[]> => {
 
-  return customFetch<Message[]>(getListMessagesUrl(groupId),
+  return customFetch<Message[]>(getListMessagesUrl(groupId,params),
   {
     ...options,
     method: 'GET'
@@ -832,23 +938,25 @@ export const listMessages = async (groupId: string, options?: RequestInit): Prom
 
 
 
-export const getListMessagesQueryKey = (groupId: string,) => {
+export const getListMessagesQueryKey = (groupId: string,
+    params?: ListMessagesParams,) => {
     return [
-    `/api/groups/${groupId}/messages`
+    `/api/groups/${groupId}/messages`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listMessages>>, TError = ErrorType<unknown>>(groupId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listMessages>>, TError = ErrorType<unknown>>(groupId: string,
+    params?: ListMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListMessagesQueryKey(groupId);
+  const queryKey =  queryOptions?.queryKey ?? getListMessagesQueryKey(groupId,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMessages>>> = ({ signal }) => listMessages(groupId, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMessages>>> = ({ signal }) => listMessages(groupId,params, { signal, ...requestOptions });
 
 
 
@@ -866,11 +974,12 @@ export type ListMessagesQueryError = ErrorType<unknown>
  */
 
 export function useListMessages<TData = Awaited<ReturnType<typeof listMessages>>, TError = ErrorType<unknown>>(
- groupId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ groupId: string,
+    params?: ListMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListMessagesQueryOptions(groupId,options)
+  const queryOptions = getListMessagesQueryOptions(groupId,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -954,20 +1063,20 @@ export const useSendMessage = <TError = ErrorType<unknown>,
       return useMutation(getSendMessageMutationOptions(options));
     }
 
-export const getGetRecentActivityUrl = () => {
+export const getListDmThreadsUrl = () => {
 
 
 
 
-  return `/api/activity`
+  return `/api/dms`
 }
 
 /**
- * @summary Get recent messages across all of the user's groups
+ * @summary List the current user's DM threads
  */
-export const getRecentActivity = async ( options?: RequestInit): Promise<ActivityItem[]> => {
+export const listDmThreads = async ( options?: RequestInit): Promise<DmThread[]> => {
 
-  return customFetch<ActivityItem[]>(getGetRecentActivityUrl(),
+  return customFetch<DmThread[]>(getListDmThreadsUrl(),
   {
     ...options,
     method: 'GET'
@@ -980,23 +1089,566 @@ export const getRecentActivity = async ( options?: RequestInit): Promise<Activit
 
 
 
-export const getGetRecentActivityQueryKey = () => {
+export const getListDmThreadsQueryKey = () => {
     return [
-    `/api/activity`
+    `/api/dms`
     ] as const;
     }
 
 
-export const getGetRecentActivityQueryOptions = <TData = Awaited<ReturnType<typeof getRecentActivity>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecentActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListDmThreadsQueryOptions = <TData = Awaited<ReturnType<typeof listDmThreads>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDmThreads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetRecentActivityQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListDmThreadsQueryKey();
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRecentActivity>>> = ({ signal }) => getRecentActivity({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDmThreads>>> = ({ signal }) => listDmThreads({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDmThreads>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDmThreadsQueryResult = NonNullable<Awaited<ReturnType<typeof listDmThreads>>>
+export type ListDmThreadsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the current user's DM threads
+ */
+
+export function useListDmThreads<TData = Awaited<ReturnType<typeof listDmThreads>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDmThreads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDmThreadsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateDmThreadUrl = () => {
+
+
+
+
+  return `/api/dms`
+}
+
+/**
+ * @summary Start (or get the existing) DM thread with a user by email
+ */
+export const createDmThread = async (dmThreadInput: DmThreadInput, options?: RequestInit): Promise<DmThread> => {
+
+  return customFetch<DmThread>(getCreateDmThreadUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(dmThreadInput)
+  }
+);}
+
+
+
+
+export const getCreateDmThreadMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDmThread>>, TError,{data: BodyType<DmThreadInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDmThread>>, TError,{data: BodyType<DmThreadInput>}, TContext> => {
+
+const mutationKey = ['createDmThread'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDmThread>>, {data: BodyType<DmThreadInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createDmThread(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDmThreadMutationResult = NonNullable<Awaited<ReturnType<typeof createDmThread>>>
+    export type CreateDmThreadMutationBody = BodyType<DmThreadInput>
+    export type CreateDmThreadMutationError = ErrorType<void>
+
+    /**
+ * @summary Start (or get the existing) DM thread with a user by email
+ */
+export const useCreateDmThread = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDmThread>>, TError,{data: BodyType<DmThreadInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createDmThread>>,
+        TError,
+        {data: BodyType<DmThreadInput>},
+        TContext
+      > => {
+      return useMutation(getCreateDmThreadMutationOptions(options));
+    }
+
+export const getGetDmThreadUrl = (threadId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}`
+}
+
+/**
+ * @summary Get a DM thread's detail
+ */
+export const getDmThread = async (threadId: string, options?: RequestInit): Promise<DmThread> => {
+
+  return customFetch<DmThread>(getGetDmThreadUrl(threadId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDmThreadQueryKey = (threadId: string,) => {
+    return [
+    `/api/dms/${threadId}`
+    ] as const;
+    }
+
+
+export const getGetDmThreadQueryOptions = <TData = Awaited<ReturnType<typeof getDmThread>>, TError = ErrorType<void>>(threadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDmThread>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDmThreadQueryKey(threadId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDmThread>>> = ({ signal }) => getDmThread(threadId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: threadId !== null && threadId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDmThread>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDmThreadQueryResult = NonNullable<Awaited<ReturnType<typeof getDmThread>>>
+export type GetDmThreadQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a DM thread's detail
+ */
+
+export function useGetDmThread<TData = Awaited<ReturnType<typeof getDmThread>>, TError = ErrorType<void>>(
+ threadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDmThread>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDmThreadQueryOptions(threadId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetMyDmKeyUrl = (threadId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/key`
+}
+
+/**
+ * Returns the thread's symmetric encryption key, wrapped with the current user's public key. Returns wrappedKey null if it has not been shared with this user yet.
+ * @summary Get the current user's wrapped end-to-end encryption key for a DM thread
+ */
+export const getMyDmKey = async (threadId: string, options?: RequestInit): Promise<DmKeyResponse> => {
+
+  return customFetch<DmKeyResponse>(getGetMyDmKeyUrl(threadId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyDmKeyQueryKey = (threadId: string,) => {
+    return [
+    `/api/dms/${threadId}/key`
+    ] as const;
+    }
+
+
+export const getGetMyDmKeyQueryOptions = <TData = Awaited<ReturnType<typeof getMyDmKey>>, TError = ErrorType<void>>(threadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyDmKey>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyDmKeyQueryKey(threadId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyDmKey>>> = ({ signal }) => getMyDmKey(threadId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: threadId !== null && threadId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyDmKey>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyDmKeyQueryResult = NonNullable<Awaited<ReturnType<typeof getMyDmKey>>>
+export type GetMyDmKeyQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the current user's wrapped end-to-end encryption key for a DM thread
+ */
+
+export function useGetMyDmKey<TData = Awaited<ReturnType<typeof getMyDmKey>>, TError = ErrorType<void>>(
+ threadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyDmKey>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyDmKeyQueryOptions(threadId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSetDmKeyUrl = (threadId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/keys`
+}
+
+/**
+ * Stores a copy of the thread's symmetric key, wrapped with the target participant's public key. Called by whichever participant already holds the decrypted thread key (e.g. the thread creator, or when re-sharing after the other participant sets their public key).
+ * @summary Share a wrapped copy of the DM thread's encryption key with a participant
+ */
+export const setDmKey = async (threadId: string,
+    dmKeyInput: DmKeyInput, options?: RequestInit): Promise<DmKeyResponse> => {
+
+  return customFetch<DmKeyResponse>(getSetDmKeyUrl(threadId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(dmKeyInput)
+  }
+);}
+
+
+
+
+export const getSetDmKeyMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setDmKey>>, TError,{threadId: string;data: BodyType<DmKeyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setDmKey>>, TError,{threadId: string;data: BodyType<DmKeyInput>}, TContext> => {
+
+const mutationKey = ['setDmKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setDmKey>>, {threadId: string;data: BodyType<DmKeyInput>}> = (props) => {
+          const {threadId,data} = props ?? {};
+
+          return  setDmKey(threadId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetDmKeyMutationResult = NonNullable<Awaited<ReturnType<typeof setDmKey>>>
+    export type SetDmKeyMutationBody = BodyType<DmKeyInput>
+    export type SetDmKeyMutationError = ErrorType<void>
+
+    /**
+ * @summary Share a wrapped copy of the DM thread's encryption key with a participant
+ */
+export const useSetDmKey = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setDmKey>>, TError,{threadId: string;data: BodyType<DmKeyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setDmKey>>,
+        TError,
+        {threadId: string;data: BodyType<DmKeyInput>},
+        TContext
+      > => {
+      return useMutation(getSetDmKeyMutationOptions(options));
+    }
+
+export const getListDmMessagesUrl = (threadId: string,
+    params?: ListDmMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/${threadId}/messages?${stringifiedParams}` : `/api/dms/${threadId}/messages`
+}
+
+/**
+ * Returns messages oldest-first. Use limit/offset query params for pagination. Defaults to 50 messages per page, maximum 100.
+ * @summary List messages in a DM thread
+ */
+export const listDmMessages = async (threadId: string,
+    params?: ListDmMessagesParams, options?: RequestInit): Promise<DmMessage[]> => {
+
+  return customFetch<DmMessage[]>(getListDmMessagesUrl(threadId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDmMessagesQueryKey = (threadId: string,
+    params?: ListDmMessagesParams,) => {
+    return [
+    `/api/dms/${threadId}/messages`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListDmMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listDmMessages>>, TError = ErrorType<unknown>>(threadId: string,
+    params?: ListDmMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDmMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDmMessagesQueryKey(threadId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDmMessages>>> = ({ signal }) => listDmMessages(threadId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: threadId !== null && threadId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDmMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDmMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listDmMessages>>>
+export type ListDmMessagesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List messages in a DM thread
+ */
+
+export function useListDmMessages<TData = Awaited<ReturnType<typeof listDmMessages>>, TError = ErrorType<unknown>>(
+ threadId: string,
+    params?: ListDmMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDmMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDmMessagesQueryOptions(threadId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendDmMessageUrl = (threadId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/messages`
+}
+
+/**
+ * @summary Send a message in a DM thread
+ */
+export const sendDmMessage = async (threadId: string,
+    dmMessageInput: DmMessageInput, options?: RequestInit): Promise<DmMessage> => {
+
+  return customFetch<DmMessage>(getSendDmMessageUrl(threadId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(dmMessageInput)
+  }
+);}
+
+
+
+
+export const getSendDmMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDmMessage>>, TError,{threadId: string;data: BodyType<DmMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendDmMessage>>, TError,{threadId: string;data: BodyType<DmMessageInput>}, TContext> => {
+
+const mutationKey = ['sendDmMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendDmMessage>>, {threadId: string;data: BodyType<DmMessageInput>}> = (props) => {
+          const {threadId,data} = props ?? {};
+
+          return  sendDmMessage(threadId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendDmMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendDmMessage>>>
+    export type SendDmMessageMutationBody = BodyType<DmMessageInput>
+    export type SendDmMessageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Send a message in a DM thread
+ */
+export const useSendDmMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDmMessage>>, TError,{threadId: string;data: BodyType<DmMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendDmMessage>>,
+        TError,
+        {threadId: string;data: BodyType<DmMessageInput>},
+        TContext
+      > => {
+      return useMutation(getSendDmMessageMutationOptions(options));
+    }
+
+export const getGetRecentActivityUrl = (params?: GetRecentActivityParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/activity?${stringifiedParams}` : `/api/activity`
+}
+
+/**
+ * Returns recent activity newest-first. Use limit/offset query params for pagination. Defaults to 30 items per page, maximum 100.
+ * @summary Get recent messages across all of the user's groups
+ */
+export const getRecentActivity = async (params?: GetRecentActivityParams, options?: RequestInit): Promise<ActivityItem[]> => {
+
+  return customFetch<ActivityItem[]>(getGetRecentActivityUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRecentActivityQueryKey = (params?: GetRecentActivityParams,) => {
+    return [
+    `/api/activity`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetRecentActivityQueryOptions = <TData = Awaited<ReturnType<typeof getRecentActivity>>, TError = ErrorType<unknown>>(params?: GetRecentActivityParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecentActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRecentActivityQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRecentActivity>>> = ({ signal }) => getRecentActivity(params, { signal, ...requestOptions });
 
 
 
@@ -1014,11 +1666,11 @@ export type GetRecentActivityQueryError = ErrorType<unknown>
  */
 
 export function useGetRecentActivity<TData = Awaited<ReturnType<typeof getRecentActivity>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecentActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetRecentActivityParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecentActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetRecentActivityQueryOptions(options)
+  const queryOptions = getGetRecentActivityQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

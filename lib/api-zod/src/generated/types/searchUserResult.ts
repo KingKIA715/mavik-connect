@@ -6,14 +6,12 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export interface Group {
+export interface SearchUserResult {
   id: string;
+  email: string;
   name: string;
-  createdBy: string;
-  createdAt: string;
-  memberCount: number;
   /** @nullable */
-  lastMessageAt?: string | null;
+  avatarUrl?: string | null;
   /** @nullable */
-  lastMessagePreview?: string | null;
+  publicKey?: string | null;
 }
