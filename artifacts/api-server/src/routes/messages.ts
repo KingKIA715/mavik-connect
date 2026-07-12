@@ -57,6 +57,10 @@ router.get(
         senderName: usersTable.name,
         senderAvatarUrl: usersTable.avatarUrl,
         content: messagesTable.content,
+        type: messagesTable.type,
+        fileName: messagesTable.fileName,
+        mimeType: messagesTable.mimeType,
+        fileSize: messagesTable.fileSize,
         createdAt: messagesTable.createdAt,
       })
       .from(messagesTable)
@@ -103,7 +107,15 @@ router.post(
 
     const [message] = await db
       .insert(messagesTable)
-      .values({ groupId, senderId: userId, content: parsed.data.content })
+      .values({
+        groupId,
+        senderId: userId,
+        content: parsed.data.content,
+        type: parsed.data.type ?? "text",
+        fileName: parsed.data.fileName ?? null,
+        mimeType: parsed.data.mimeType ?? null,
+        fileSize: parsed.data.fileSize ?? null,
+      })
       .returning();
 
     const [sender] = await db
@@ -118,6 +130,10 @@ router.post(
       senderName: sender?.name ?? "Family Member",
       senderAvatarUrl: sender?.avatarUrl ?? null,
       content: message.content,
+      type: message.type,
+      fileName: message.fileName,
+      mimeType: message.mimeType,
+      fileSize: message.fileSize,
       createdAt: toIso(message.createdAt),
     });
 

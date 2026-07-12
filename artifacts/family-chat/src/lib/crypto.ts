@@ -135,3 +135,31 @@ export async function decryptMessage(groupKey: CryptoKey, payload: string): Prom
   const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, groupKey, ciphertext);
   return new TextDecoder().decode(decrypted);
 }
+
+/**
+ * Encrypts a File/Blob with the group's AES key for storage as message
+ * content. The file's raw bytes are base64-encoded first, then run through
+ * the same encryptMessage() pipeline used for text — so the server-side
+ * schema and route never need to know the difference between a text message
+ * and a file message; both are just an "enc:..." string in `content`.
+ */
+export async function encryptFile(groupKey: CryptoKey, file: File | Blob): Promise<string> {
+  const buf = await file.arrayBuffer();
+  const base64 = bufToBase64(buf);
+  return encryptMessage(groupKey, base64);
+}
+
+/**
+ * Reverses encryptFile: decrypts the payload back to the original base64
+ * string, decodes it to raw bytes, and wraps it in a Blob with the given
+ * mime type so it can be previewed or downloaded.
+ */
+export async function decryptFile(
+  groupKey: CryptoKey,
+  payload: string,
+  mimeType: string | null | undefined,
+): Promise<Blob> {
+  const base64 = await decryptMessage(groupKey, payload);
+  const buf = base64ToBuf(base64);
+  return new Blob([buf], { type: mimeType || "application/octet-stream" });
+}

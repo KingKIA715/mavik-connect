@@ -450,7 +450,7 @@ components:
 
     Message:
       type: object
-      required: [id, groupId, senderId, senderName, content, createdAt]
+      required: [id, groupId, senderId, senderName, content, type, createdAt]
       properties:
         id:
           type: string
@@ -464,6 +464,16 @@ components:
           type: ["string", "null"]
         content:
           type: string
+        type:
+          type: string
+          enum: [text, file]
+          default: text
+        fileName:
+          type: ["string", "null"]
+        mimeType:
+          type: ["string", "null"]
+        fileSize:
+          type: ["integer", "null"]
         createdAt:
           type: string
 
@@ -474,6 +484,16 @@ components:
         content:
           type: string
           minLength: 1
+        type:
+          type: string
+          enum: [text, file]
+          default: text
+        fileName:
+          type: ["string", "null"]
+        mimeType:
+          type: ["string", "null"]
+        fileSize:
+          type: ["integer", "null"]
 
     ActivityItem:
       type: object

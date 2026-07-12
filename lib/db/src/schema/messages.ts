@@ -13,6 +13,10 @@ export const messagesTable = pgTable("messages", {
     .notNull()
     .references(() => usersTable.id),
   content: text("content").notNull(),
+  type: text("type").notNull().default("text"),
+  fileName: text("file_name"),
+  mimeType: text("mime_type"),
+  fileSize: integer("file_size"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

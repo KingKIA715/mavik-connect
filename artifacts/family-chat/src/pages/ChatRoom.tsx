@@ -18,10 +18,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Video, Send, UserPlus, Users, Lock, ShieldAlert, Crown } from "lucide-react";
+import { Video, Phone, Send, UserPlus, Users, Lock, ShieldAlert, Crown, Paperclip, Download, FileText } from "lucide-react";
 import { format } from "date-fns";
 import { useEncryption, useMyGroupKey, shareGroupKeyWithMember } from "@/hooks/use-encryption";
-import { encryptMessage, decryptMessage, isEncryptedPayload } from "@/lib/crypto";
+import { encryptMessage, decryptMessage, encryptFile, decryptFile, isEncryptedPayload } from "@/lib/crypto";
+
+const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB — keep encrypted+base64 payload comfortably under the server's 15mb JSON limit
 
 export default function ChatRoom() {
   const { groupId } = useParams<{ groupId: string }>();
@@ -42,6 +44,10 @@ export default function ChatRoom() {
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [decrypted, setDecrypted] = useState<Record<string, string>>({});
+  const [fileUrls, setFileUrls] = useState<Record<string, string>>({});
+  const [isUploading, setIsUploading] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const { isConnected, onMessageRef } = useWebSocket(groupId);
@@ -107,6 +113,74 @@ export default function ChatRoom() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupKey, group, groupId]);
+
+  // For file messages, turn the decrypted base64 payload into a Blob object
+  // URL so it can be previewed (images) or downloaded. Revoke old URLs when
+  // messages/groupKey change to avoid leaking memory.
+  useEffect(() => {
+    if (!groupKey || !messages) return;
+    let cancelled = false;
+    const createdUrls: string[] = [];
+
+    (async () => {
+      const next: Record<string, string> = {};
+      for (const msg of messages) {
+        if (msg.type !== "file" || !isEncryptedPayload(msg.content)) continue;
+        try {
+          const blob = await decryptFile(groupKey, msg.content, msg.mimeType);
+          const url = URL.createObjectURL(blob);
+          next[msg.id] = url;
+          createdUrls.push(url);
+        } catch {
+          // leave missing — rendered as a broken/unavailable file below
+        }
+      }
+      if (!cancelled) {
+        setFileUrls(next);
+      } else {
+        createdUrls.forEach((u) => URL.revokeObjectURL(u));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      createdUrls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [groupKey, messages]);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow selecting the same file again later
+    if (!file || !groupId || !groupKey) return;
+
+    if (file.size > MAX_FILE_SIZE) {
+      toast({
+        variant: "destructive",
+        title: "File too large",
+        description: `Please choose a file under ${Math.floor(MAX_FILE_SIZE / (1024 * 1024))}MB.`,
+      });
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const encrypted = await encryptFile(groupKey, file);
+      await sendMessage.mutateAsync({
+        groupId,
+        data: {
+          content: encrypted,
+          type: "file",
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          fileSize: file.size,
+        },
+      });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Couldn't send file", description: "An error occurred while uploading." });
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -262,6 +336,13 @@ export default function ChatRoom() {
             </DialogContent>
           </Dialog>
 
+          <Link href={`/app/groups/${groupId}/call?mode=voice`}>
+            <Button variant="outline" className="rounded-full gap-2">
+              <Phone className="w-4 h-4" />
+              Voice Call
+            </Button>
+          </Link>
+
           <Link href={`/app/groups/${groupId}/call`}>
             <Button className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md gap-2">
               <Video className="w-4 h-4" />
@@ -302,15 +383,26 @@ export default function ChatRoom() {
                     {showAvatar && !isMe && (
                       <span className="text-xs text-muted-foreground ml-1 mb-1 font-medium">{msg.senderName}</span>
                     )}
-                    <div className={`
-                      px-4 py-2.5 rounded-2xl shadow-sm text-sm
-                      ${isMe ? 
-                        'bg-primary text-primary-foreground rounded-tr-sm' : 
-                        'bg-white border border-border text-foreground rounded-tl-sm'
-                      }
-                    `}>
-                      {isEncryptedPayload(msg.content) ? (decrypted[msg.id] ?? "🔒 Decrypting…") : msg.content}
-                    </div>
+                    {msg.type === "file" ? (
+                      <FileBubble
+                        isMe={isMe}
+                        fileName={msg.fileName}
+                        mimeType={msg.mimeType}
+                        fileSize={msg.fileSize}
+                        url={fileUrls[msg.id]}
+                        ready={!!decrypted[msg.id] || !isEncryptedPayload(msg.content)}
+                      />
+                    ) : (
+                      <div className={`
+                        px-4 py-2.5 rounded-2xl shadow-sm text-sm
+                        ${isMe ? 
+                          'bg-primary text-primary-foreground rounded-tr-sm' : 
+                          'bg-white border border-border text-foreground rounded-tl-sm'
+                        }
+                      `}>
+                        {isEncryptedPayload(msg.content) ? (decrypted[msg.id] ?? "🔒 Decrypting…") : msg.content}
+                      </div>
+                    )}
                     <span className="text-[10px] text-muted-foreground/60 mt-1 px-1">
                       {format(new Date(msg.createdAt), "h:mm a")}
                     </span>
@@ -325,10 +417,27 @@ export default function ChatRoom() {
       {/* Composer */}
       <div className="flex-none p-4 bg-white border-t border-border shadow-[0_-4px_20px_-15px_rgba(0,0,0,0.1)]">
         <form onSubmit={handleSend} className="max-w-3xl mx-auto flex items-end gap-3 relative">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="rounded-full w-12 h-12 flex-shrink-0 text-muted-foreground"
+            disabled={!groupKey || isUploading}
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach a file"
+          >
+            <Paperclip className="w-5 h-5" />
+          </Button>
           <Input 
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="Type a message..."
+            placeholder={isUploading ? "Sending file…" : "Type a message..."}
             className="flex-1 bg-muted/30 border-muted-border rounded-full px-6 py-6 text-base shadow-inner focus-visible:ring-1"
           />
           <Button 
@@ -342,5 +451,61 @@ export default function ChatRoom() {
         </form>
       </div>
     </div>
+  );
+}
+
+function FileBubble({
+  isMe,
+  fileName,
+  mimeType,
+  fileSize,
+  url,
+  ready,
+}: {
+  isMe: boolean;
+  fileName?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  url?: string;
+  ready: boolean;
+}) {
+  const isImage = !!mimeType?.startsWith("image/");
+  const sizeLabel =
+    fileSize != null
+      ? fileSize < 1024 * 1024
+        ? `${Math.max(1, Math.round(fileSize / 1024))} KB`
+        : `${(fileSize / (1024 * 1024)).toFixed(1)} MB`
+      : "";
+
+  if (!ready || !url) {
+    return (
+      <div className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-2 ${isMe ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-white border border-border text-foreground rounded-tl-sm'}`}>
+        <FileText className="w-4 h-4" />
+        {fileName ?? "File"} — 🔒 Decrypting…
+      </div>
+    );
+  }
+
+  if (isImage) {
+    return (
+      <a href={url} download={fileName ?? "image"} className="block rounded-2xl overflow-hidden shadow-sm border border-border max-w-xs">
+        <img src={url} alt={fileName ?? "Shared image"} className="w-full h-auto object-cover" />
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      download={fileName ?? "file"}
+      className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-3 hover:opacity-90 transition-opacity ${isMe ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-white border border-border text-foreground rounded-tl-sm'}`}
+    >
+      <FileText className="w-5 h-5 flex-shrink-0" />
+      <div className="min-w-0">
+        <div className="truncate font-medium">{fileName ?? "File"}</div>
+        {sizeLabel && <div className="text-xs opacity-70">{sizeLabel}</div>}
+      </div>
+      <Download className="w-4 h-4 flex-shrink-0 ml-auto" />
+    </a>
   );
 }

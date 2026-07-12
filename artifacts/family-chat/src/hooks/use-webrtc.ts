@@ -6,6 +6,10 @@ export function useWebRTC(groupId: string | undefined, currentUserId: string | u
   
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [hasVideo, setHasVideo] = useState(true);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   
   const peersRef = useRef<Record<string, RTCPeerConnection>>({});
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -14,12 +18,14 @@ export function useWebRTC(groupId: string | undefined, currentUserId: string | u
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
   };
 
-  // Start local media
-  const startCall = useCallback(async () => {
+  // Start local media. Pass { video: false } for a voice-only call.
+  const startCall = useCallback(async (options?: { video?: boolean }) => {
+    const wantVideo = options?.video !== false;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: wantVideo, audio: true });
       setLocalStream(stream);
       localStreamRef.current = stream;
+      setHasVideo(wantVideo && stream.getVideoTracks().length > 0);
 
       // Announce we joined
       sendMessage({ type: "signal-broadcast", data: { type: "join" } });
@@ -149,12 +155,81 @@ export function useWebRTC(groupId: string | undefined, currentUserId: string | u
     };
   }, []);
 
+  // Mute/unmute local microphone
+  const toggleAudio = useCallback(() => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack) return;
+    audioTrack.enabled = !audioTrack.enabled;
+    setIsMuted(!audioTrack.enabled);
+  }, []);
+
+  // Enable/disable local camera (keeps the track alive, just stops sending frames)
+  const toggleVideo = useCallback(() => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const videoTrack = stream.getVideoTracks()[0];
+    if (!videoTrack) return;
+    videoTrack.enabled = !videoTrack.enabled;
+    setIsVideoOff(!videoTrack.enabled);
+  }, []);
+
+  // Switch between front/back camera without renegotiating any peer connection
+  const switchCamera = useCallback(async () => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+
+    const currentVideoTrack = stream.getVideoTracks()[0];
+    const nextFacingMode = facingMode === "user" ? "environment" : "user";
+
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: nextFacingMode },
+        audio: false,
+      });
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      if (!newVideoTrack) return;
+
+      // Preserve mute state on the new track
+      newVideoTrack.enabled = currentVideoTrack ? currentVideoTrack.enabled : true;
+
+      // Swap the track on every active peer connection so no renegotiation is needed
+      await Promise.all(
+        Object.values(peersRef.current).map(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === "video");
+          return sender ? sender.replaceTrack(newVideoTrack) : Promise.resolve();
+        })
+      );
+
+      // Swap the track in the local stream so the preview updates too
+      if (currentVideoTrack) {
+        stream.removeTrack(currentVideoTrack);
+        currentVideoTrack.stop();
+      }
+      stream.addTrack(newVideoTrack);
+
+      setFacingMode(nextFacingMode);
+      // Trigger a re-render so components watching localStream pick up the swap
+      setLocalStream(new MediaStream(stream.getTracks()));
+      localStreamRef.current = stream;
+    } catch (err) {
+      console.error("Failed to switch camera", err);
+    }
+  }, [facingMode]);
+
   return {
     localStream,
     remoteStreams,
     startCall,
     leaveCall,
     isConnected,
-    presence
+    presence,
+    isMuted,
+    isVideoOff,
+    hasVideo,
+    toggleAudio,
+    toggleVideo,
+    switchCamera
   };
 }
