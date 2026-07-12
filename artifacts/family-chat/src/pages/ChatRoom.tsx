@@ -230,17 +230,18 @@ export default function ChatRoom() {
   return (
     <div className="flex flex-col h-full bg-[#FAFAFA]">
       {/* Header */}
-      <header className="flex-none h-16 border-b border-border bg-white px-6 flex items-center justify-between shadow-sm z-10">
-        <div className="flex items-center gap-4">
-          <h2 className="font-serif text-xl font-bold text-foreground">{group.name}</h2>
+      <header className="flex-none h-16 border-b border-border bg-white px-3 sm:px-6 flex items-center justify-between shadow-sm z-10 gap-2">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <h2 className="font-serif text-lg sm:text-xl font-bold text-foreground truncate max-w-[40vw] sm:max-w-none">{group.name}</h2>
           <Dialog open={isMembersOpen} onOpenChange={setIsMembersOpen}>
             <DialogTrigger asChild>
               <button
                 type="button"
-                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground bg-muted hover:bg-muted/70 transition-colors px-2.5 py-1 rounded-full"
+                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground bg-muted hover:bg-muted/70 transition-colors px-2.5 py-1 rounded-full flex-shrink-0"
               >
                 <Users className="w-3.5 h-3.5" />
-                {group.members.length} members
+                <span className="hidden sm:inline">{group.members.length} members</span>
+                <span className="sm:hidden">{group.members.length}</span>
               </button>
             </DialogTrigger>
             <DialogContent>
@@ -293,25 +294,25 @@ export default function ChatRoom() {
             </DialogContent>
           </Dialog>
           {groupKeyStatus === "ready" && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+            <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
               <Lock className="w-3.5 h-3.5" />
               Encrypted
             </div>
           )}
           {groupKeyStatus === "missing" && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full">
+            <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full">
               <ShieldAlert className="w-3.5 h-3.5" />
               Waiting for access
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
             <DialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="rounded-full gap-1.5 text-muted-foreground">
+              <Button variant="ghost" size="sm" className="rounded-full gap-1.5 text-muted-foreground px-2.5 sm:px-3">
                 <UserPlus className="w-4 h-4" />
-                Invite
+                <span className="hidden sm:inline">Invite</span>
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -337,16 +338,16 @@ export default function ChatRoom() {
           </Dialog>
 
           <Link href={`/app/groups/${groupId}/call?mode=voice`}>
-            <Button variant="outline" className="rounded-full gap-2">
+            <Button variant="outline" className="rounded-full gap-2 px-2.5 sm:px-4" aria-label="Voice call">
               <Phone className="w-4 h-4" />
-              Voice Call
+              <span className="hidden sm:inline">Voice Call</span>
             </Button>
           </Link>
 
           <Link href={`/app/groups/${groupId}/call`}>
-            <Button className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md gap-2">
+            <Button className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md gap-2 px-2.5 sm:px-4" aria-label="Video call">
               <Video className="w-4 h-4" />
-              Join Call
+              <span className="hidden sm:inline">Join Call</span>
             </Button>
           </Link>
         </div>
