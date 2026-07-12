@@ -106,7 +106,7 @@ app.use(
 );
 
 // Apply rate limiters to specific route patterns
-app.use("/api/groups/*/messages", messageLimiter);
+app.use("/api/groups/:groupId/messages", messageLimiter);
 app.use("/api/groups", groupActionLimiter);
 app.use("/api", apiLimiter);
 
