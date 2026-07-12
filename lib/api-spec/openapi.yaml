@@ -18,6 +18,8 @@ tags:
     description: Chat message operations
   - name: activity
     description: Cross-group activity feed
+  - name: dms
+    description: Direct message operations
 paths:
   /healthz:
     get:
@@ -68,6 +70,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserProfile"
+
+  /users/search:
+    get:
+      operationId: searchUserByEmail
+      tags: [users]
+      summary: Search for a registered user by exact email match
+      description: >
+        Used to start a new DM thread, the same way group invites work.
+        Returns 404 if no registered user matches the given email exactly.
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchUserResult"
+        "404":
+          description: No user with that email
 
   /groups:
     get:
@@ -287,6 +313,180 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Message"
+
+  /dms:
+    get:
+      operationId: listDmThreads
+      tags: [dms]
+      summary: List the current user's DM threads
+      responses:
+        "200":
+          description: List of DM threads
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DmThread"
+    post:
+      operationId: createDmThread
+      tags: [dms]
+      summary: Start (or get the existing) DM thread with a user by email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DmThreadInput"
+      responses:
+        "201":
+          description: Created (or existing) DM thread
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DmThread"
+        "404":
+          description: User with that email not found
+
+  /dms/{threadId}:
+    get:
+      operationId: getDmThread
+      tags: [dms]
+      summary: Get a DM thread's detail
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: DM thread detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DmThread"
+        "404":
+          description: Not found
+
+  /dms/{threadId}/key:
+    get:
+      operationId: getMyDmKey
+      tags: [dms]
+      summary: Get the current user's wrapped end-to-end encryption key for a DM thread
+      description: >
+        Returns the thread's symmetric encryption key, wrapped with the
+        current user's public key. Returns wrappedKey null if it has not
+        been shared with this user yet.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Wrapped DM key, if shared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DmKeyResponse"
+        "404":
+          description: Not found
+
+  /dms/{threadId}/keys:
+    post:
+      operationId: setDmKey
+      tags: [dms]
+      summary: Share a wrapped copy of the DM thread's encryption key with a participant
+      description: >
+        Stores a copy of the thread's symmetric key, wrapped with the target
+        participant's public key. Called by whichever participant already
+        holds the decrypted thread key (e.g. the thread creator, or when
+        re-sharing after the other participant sets their public key).
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DmKeyInput"
+      responses:
+        "201":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DmKeyResponse"
+        "404":
+          description: Not found
+
+  /dms/{threadId}/messages:
+    get:
+      operationId: listDmMessages
+      tags: [dms]
+      summary: List messages in a DM thread
+      description: >
+        Returns messages oldest-first. Use limit/offset query params for pagination.
+        Defaults to 50 messages per page, maximum 100.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: List of DM messages, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DmMessage"
+    post:
+      operationId: sendDmMessage
+      tags: [dms]
+      summary: Send a message in a DM thread
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DmMessageInput"
+      responses:
+        "201":
+          description: Created DM message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DmMessage"
 
   /activity:
     get:
@@ -511,3 +711,112 @@ components:
           type: string
         createdAt:
           type: string
+
+    SearchUserResult:
+      type: object
+      required: [id, email, name]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        publicKey:
+          type: ["string", "null"]
+
+    DmThreadInput:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+
+    DmThread:
+      type: object
+      required: [id, otherUserId, otherUserName, otherUserEmail, createdAt]
+      properties:
+        id:
+          type: string
+        otherUserId:
+          type: string
+        otherUserName:
+          type: string
+        otherUserEmail:
+          type: string
+        otherUserAvatarUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        lastMessageAt:
+          type: ["string", "null"]
+        lastMessagePreview:
+          type: ["string", "null"]
+
+    DmMessage:
+      type: object
+      required: [id, threadId, senderId, senderName, content, type, createdAt]
+      properties:
+        id:
+          type: string
+        threadId:
+          type: string
+        senderId:
+          type: string
+        senderName:
+          type: string
+        senderAvatarUrl:
+          type: ["string", "null"]
+        content:
+          type: string
+        type:
+          type: string
+          enum: [text, file]
+          default: text
+        fileName:
+          type: ["string", "null"]
+        mimeType:
+          type: ["string", "null"]
+        fileSize:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+
+    DmMessageInput:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          enum: [text, file]
+          default: text
+        fileName:
+          type: ["string", "null"]
+        mimeType:
+          type: ["string", "null"]
+        fileSize:
+          type: ["integer", "null"]
+
+    DmKeyResponse:
+      type: object
+      required: [threadId, wrappedKey]
+      properties:
+        threadId:
+          type: string
+        wrappedKey:
+          type: ["string", "null"]
+
+    DmKeyInput:
+      type: object
+      required: [userId, wrappedKey]
+      properties:
+        userId:
+          type: string
+        wrappedKey:
+          type: string
+          minLength: 1
