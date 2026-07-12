@@ -5,17 +5,7 @@ import { db, groupMembersTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { parseGroupId } from "../lib/groupAccess";
-import { parseThreadId, isThreadParticipant } from "../lib/dmAccess";
-import {
-  registerConnection,
-  unregisterConnection,
-  broadcastToGroup,
-  sendToUser,
-  registerThreadConnection,
-  unregisterThreadConnection,
-  broadcastToThread,
-  sendToThreadUser,
-} from "./hub";
+import { registerConnection, unregisterConnection, broadcastToGroup, sendToUser } from "./hub";
 
 export const WS_PATH = "/api/ws";
 
@@ -57,59 +47,10 @@ export function attachWebSocketServer(server: HttpServer): void {
     void (async () => {
       const userId = await authenticateUpgrade(req);
       const groupId = parseGroupId(url.searchParams.get("groupId") ?? undefined);
-      const threadId = parseThreadId(url.searchParams.get("threadId") ?? undefined);
 
-      if (!userId || (groupId === null && threadId === null)) {
+      if (!userId || groupId === null) {
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
-        return;
-      }
-
-      // A connection is either for a group or for a DM thread, never both.
-      if (threadId !== null) {
-        const allowed = await isThreadParticipant(threadId, userId);
-        if (!allowed) {
-          socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
-          socket.destroy();
-          return;
-        }
-
-        wss.handleUpgrade(req, socket, head, (ws) => {
-          const conn = registerThreadConnection(threadId, userId, ws);
-
-          ws.on("message", (raw) => {
-            let parsed: unknown;
-            try {
-              parsed = JSON.parse(raw.toString());
-            } catch {
-              return;
-            }
-            if (typeof parsed !== "object" || parsed === null) return;
-            const data = parsed as Record<string, unknown>;
-
-            if (data.type === "signal" && typeof data.to === "string") {
-              sendToThreadUser(threadId, data.to, {
-                type: "signal",
-                from: userId,
-                data: data.data,
-              });
-            } else if (data.type === "signal-broadcast") {
-              broadcastToThread(
-                threadId,
-                { type: "signal", from: userId, data: data.data },
-                conn,
-              );
-            }
-          });
-
-          ws.on("close", () => {
-            unregisterThreadConnection(threadId, conn);
-          });
-
-          ws.on("error", (err) => {
-            logger.error({ err, threadId, userId }, "WS connection error");
-          });
-        });
         return;
       }
 
@@ -118,7 +59,7 @@ export function attachWebSocketServer(server: HttpServer): void {
         .from(groupMembersTable)
         .where(
           and(
-            eq(groupMembersTable.groupId, groupId!),
+            eq(groupMembersTable.groupId, groupId),
             eq(groupMembersTable.userId, userId),
           ),
         );
@@ -130,7 +71,7 @@ export function attachWebSocketServer(server: HttpServer): void {
       }
 
       wss.handleUpgrade(req, socket, head, (ws) => {
-        const conn = registerConnection(groupId!, userId, ws);
+        const conn = registerConnection(groupId, userId, ws);
 
         ws.on("message", (raw) => {
           let parsed: unknown;
@@ -143,14 +84,14 @@ export function attachWebSocketServer(server: HttpServer): void {
           const data = parsed as Record<string, unknown>;
 
           if (data.type === "signal" && typeof data.to === "string") {
-            sendToUser(groupId!, data.to, {
+            sendToUser(groupId, data.to, {
               type: "signal",
               from: userId,
               data: data.data,
             });
           } else if (data.type === "signal-broadcast") {
             broadcastToGroup(
-              groupId!,
+              groupId,
               { type: "signal", from: userId, data: data.data },
               conn,
             );
@@ -158,7 +99,7 @@ export function attachWebSocketServer(server: HttpServer): void {
         });
 
         ws.on("close", () => {
-          unregisterConnection(groupId!, conn);
+          unregisterConnection(groupId, conn);
         });
 
         ws.on("error", (err) => {
