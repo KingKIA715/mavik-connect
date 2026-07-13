@@ -12,6 +12,8 @@ import Dashboard from "@/pages/Dashboard";
 import Settings from "@/pages/Settings";
 import ChatRoom from "@/pages/ChatRoom";
 import VideoCall from "@/pages/VideoCall";
+import DmInbox from "@/pages/DmInbox";
+import DmThread from "@/pages/DmThread";
 
 const queryClient = new QueryClient();
 
@@ -91,6 +93,14 @@ function Router() {
 
         <Route path="/app/groups/:groupId/call">
           <ProtectedRoute component={VideoCall} />
+        </Route>
+
+        <Route path="/app/dms">
+          <ProtectedRoute component={DmInbox} />
+        </Route>
+
+        <Route path="/app/dms/:threadId">
+          <ProtectedRoute component={DmThread} />
         </Route>
 
         <Route component={NotFound} />

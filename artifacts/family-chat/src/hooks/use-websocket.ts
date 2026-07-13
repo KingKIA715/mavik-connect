@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Message } from "@workspace/api-client-react";
+import { Message, DmMessage } from "@workspace/api-client-react";
 
 type WsMessage = 
   | { type: "message"; message: Message }
@@ -65,4 +65,50 @@ export function useWebSocket(groupId?: string) {
     onMessageRef,
     onSignalRef
   };
+}
+
+type DmWsMessage = { type: "message"; message: DmMessage };
+
+/**
+ * Same idea as useWebSocket, but connects to a DM thread (`?threadId=`)
+ * instead of a group. The server only ever sends `{ type: "message" }` on
+ * this connection — no presence or WebRTC signaling for DMs.
+ */
+export function useThreadWebSocket(threadId?: string) {
+  const [isConnected, setIsConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const onMessageRef = useRef<((msg: DmMessage) => void) | null>(null);
+
+  useEffect(() => {
+    if (!threadId) return;
+
+    const wsUrl = new URL(`${import.meta.env.BASE_URL}api/ws`, window.location.href);
+    wsUrl.protocol = wsUrl.protocol.replace('http', 'ws');
+    wsUrl.searchParams.set("threadId", threadId);
+
+    const ws = new WebSocket(wsUrl.toString());
+    wsRef.current = ws;
+
+    ws.onopen = () => setIsConnected(true);
+    ws.onclose = () => setIsConnected(false);
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data) as DmWsMessage;
+        if (data.type === "message" && onMessageRef.current) {
+          onMessageRef.current(data.message);
+        }
+      } catch (err) {
+        console.error("Failed to parse WS message", err);
+      }
+    };
+
+    return () => {
+      ws.close();
+      wsRef.current = null;
+      setIsConnected(false);
+    };
+  }, [threadId]);
+
+  return { isConnected, onMessageRef };
 }

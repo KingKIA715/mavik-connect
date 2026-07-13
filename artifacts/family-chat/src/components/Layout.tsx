@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth, useUser, SignOutButton } from "@clerk/react";
 import { ReactNode } from "react";
-import { LogOut, Settings, MessageCircle, Home, Menu, X } from "lucide-react";
+import { LogOut, Settings, MessageCircle, Home, Menu, X, Mail } from "lucide-react";
 import { EncryptionProvider } from "@/hooks/use-encryption";
 
 export function AppLayout({ children }: { children: ReactNode }) {
@@ -26,6 +26,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
       >
         <Home className="w-5 h-5" />
         Dashboard
+      </Link>
+      <Link
+        href="/app/dms"
+        onClick={() => setMobileMenuOpen(false)}
+        className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${location.startsWith("/app/dms") ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium" : "text-sidebar-foreground hover:bg-sidebar-accent/50"}`}
+      >
+        <Mail className="w-5 h-5" />
+        Direct Messages
       </Link>
     </>
   );

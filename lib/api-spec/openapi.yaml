@@ -736,7 +736,7 @@ components:
 
     DmThread:
       type: object
-      required: [id, otherUserId, otherUserName, otherUserEmail, createdAt]
+      required: [id, otherUserId, otherUserName, otherUserEmail, otherUserHasEncryptionKey, createdAt]
       properties:
         id:
           type: string
@@ -748,6 +748,10 @@ components:
           type: string
         otherUserAvatarUrl:
           type: ["string", "null"]
+        otherUserPublicKey:
+          type: ["string", "null"]
+        otherUserHasEncryptionKey:
+          type: boolean
         createdAt:
           type: string
         lastMessageAt:

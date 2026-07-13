@@ -4,7 +4,9 @@ import {
   useGetMyProfile,
   useSetMyPublicKey,
   useGetMyGroupKey,
+  useGetMyDmKey,
   getGetMyGroupKeyQueryKey,
+  getGetMyDmKeyQueryKey,
   getGetMyProfileQueryKey,
 } from "@workspace/api-client-react";
 import { ensureKeyPair, generateGroupKey, unwrapGroupKey, wrapGroupKeyForMember } from "@/lib/crypto";
@@ -137,4 +139,96 @@ export function useMyGroupKey(groupId: string | undefined, privateKey: CryptoKey
   }, [groupId, privateKey, data, isFetched]);
 
   return { groupKey, status };
+}
+
+// --- DM thread key exchange ---
+//
+// Same design as group keys above (a random AES-256-GCM key, wrapped once
+// per participant with their RSA public key), just keyed by DM thread id
+// instead of group id, and always exactly 2 participants instead of N.
+// Reuses the same generic crypto primitives (generateGroupKey/wrapGroupKeyForMember/
+// unwrapGroupKey work on any AES key regardless of what it's "for").
+
+const dmKeyCache = new Map<string, CryptoKey>();
+
+export function getCachedDmKey(threadId: string): CryptoKey | null {
+  return dmKeyCache.get(threadId) ?? null;
+}
+
+function setCachedDmKey(threadId: string, key: CryptoKey) {
+  dmKeyCache.set(threadId, key);
+}
+
+/** Generates a brand-new DM thread key and stores a wrapped copy for the creator. */
+export async function createAndShareDmKey(params: {
+  threadId: string;
+  myUserId: string;
+  myPublicKey: string;
+  setDmKey: (args: { threadId: string; data: { userId: string; wrappedKey: string } }) => Promise<unknown>;
+}): Promise<CryptoKey> {
+  const key = await generateGroupKey();
+  const wrapped = await wrapGroupKeyForMember(key, params.myPublicKey);
+  await params.setDmKey({ threadId: params.threadId, data: { userId: params.myUserId, wrappedKey: wrapped } });
+  setCachedDmKey(params.threadId, key);
+  return key;
+}
+
+/** Shares an already-decrypted DM key with the other participant's public key. */
+export async function shareDmKeyWithParticipant(params: {
+  threadId: string;
+  dmKey: CryptoKey;
+  participantUserId: string;
+  participantPublicKey: string;
+  setDmKey: (args: { threadId: string; data: { userId: string; wrappedKey: string } }) => Promise<unknown>;
+}): Promise<void> {
+  const wrapped = await wrapGroupKeyForMember(params.dmKey, params.participantPublicKey);
+  await params.setDmKey({
+    threadId: params.threadId,
+    data: { userId: params.participantUserId, wrappedKey: wrapped },
+  });
+}
+
+/**
+ * Loads (and caches) the current user's decrypted copy of a DM thread's
+ * encryption key. "missing" means no one has shared it with this browser
+ * yet (e.g. the other participant set their public key after being invited).
+ */
+export function useMyDmKey(threadId: string | undefined, privateKey: CryptoKey | null) {
+  const [dmKey, setDmKey] = useState<CryptoKey | null>(() =>
+    threadId ? getCachedDmKey(threadId) : null,
+  );
+  const [status, setStatus] = useState<GroupKeyStatus>(dmKey ? "ready" : "loading");
+
+  const { data, isFetched } = useGetMyDmKey(threadId ?? "", {
+    query: {
+      enabled: !!threadId && !!privateKey && !dmKey,
+      queryKey: getGetMyDmKeyQueryKey(threadId ?? ""),
+    },
+  });
+
+  useEffect(() => {
+    if (!threadId) return;
+    const cached = getCachedDmKey(threadId);
+    if (cached) {
+      setDmKey(cached);
+      setStatus("ready");
+      return;
+    }
+    if (!privateKey || !isFetched) return;
+
+    if (!data?.wrappedKey) {
+      setStatus("missing");
+      return;
+    }
+
+    unwrapGroupKey(data.wrappedKey, privateKey)
+      .then((key) => {
+        setCachedDmKey(threadId, key);
+        setDmKey(key);
+        setStatus("ready");
+      })
+      .catch(() => setStatus("missing"));
+  }, [threadId, privateKey, data, isFetched]);
+
+  return { dmKey, status };
 }

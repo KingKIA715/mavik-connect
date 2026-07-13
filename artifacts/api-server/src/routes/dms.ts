@@ -100,6 +100,14 @@ router.get("/dms", async (req, res): Promise<void> => {
     }
   }
 
+  const keyHolders = await db
+    .select({ threadId: dmKeysTable.threadId, userId: dmKeysTable.userId })
+    .from(dmKeysTable)
+    .where(inArray(dmKeysTable.threadId, threadIds));
+  const keyHolderSet = new Set(
+    keyHolders.map((k) => `${k.threadId}:${k.userId}`),
+  );
+
   const result = threads.map((thread) => {
     const otherUserId = thread.userAId === userId ? thread.userBId : thread.userAId;
     const otherUser = otherUserById.get(otherUserId);
@@ -110,6 +118,8 @@ router.get("/dms", async (req, res): Promise<void> => {
       otherUserName: otherUser?.name ?? "Unknown",
       otherUserEmail: otherUser?.email ?? "",
       otherUserAvatarUrl: otherUser?.avatarUrl ?? null,
+      otherUserPublicKey: otherUser?.publicKey ?? null,
+      otherUserHasEncryptionKey: keyHolderSet.has(`${thread.id}:${otherUserId}`),
       createdAt: toIso(thread.createdAt),
       lastMessageAt: toIsoOrNull(lastMessage?.createdAt),
       lastMessagePreview: lastMessage?.content ?? null,
@@ -154,6 +164,16 @@ router.post("/dms", async (req, res): Promise<void> => {
     .orderBy(desc(dmMessagesTable.createdAt))
     .limit(1);
 
+  const [otherUserKey] = await db
+    .select({ userId: dmKeysTable.userId })
+    .from(dmKeysTable)
+    .where(
+      and(
+        eq(dmKeysTable.threadId, thread.id),
+        eq(dmKeysTable.userId, otherUser.id),
+      ),
+    );
+
   res.status(201).json(
     CreateDmThreadResponse.parse({
       id: String(thread.id),
@@ -161,6 +181,8 @@ router.post("/dms", async (req, res): Promise<void> => {
       otherUserName: otherUser.name,
       otherUserEmail: otherUser.email,
       otherUserAvatarUrl: otherUser.avatarUrl,
+      otherUserPublicKey: otherUser.publicKey,
+      otherUserHasEncryptionKey: Boolean(otherUserKey),
       createdAt: toIso(thread.createdAt),
       lastMessageAt: toIsoOrNull(lastMessage?.createdAt),
       lastMessagePreview: lastMessage?.content ?? null,
@@ -197,6 +219,13 @@ router.get("/dms/:threadId", async (req, res): Promise<void> => {
     .from(usersTable)
     .where(eq(usersTable.id, otherUserId));
 
+  const [otherUserKey] = await db
+    .select({ userId: dmKeysTable.userId })
+    .from(dmKeysTable)
+    .where(
+      and(eq(dmKeysTable.threadId, threadId), eq(dmKeysTable.userId, otherUserId)),
+    );
+
   const [lastMessage] = await db
     .select({
       content: dmMessagesTable.content,
@@ -214,6 +243,8 @@ router.get("/dms/:threadId", async (req, res): Promise<void> => {
       otherUserName: otherUser?.name ?? "Unknown",
       otherUserEmail: otherUser?.email ?? "",
       otherUserAvatarUrl: otherUser?.avatarUrl ?? null,
+      otherUserPublicKey: otherUser?.publicKey ?? null,
+      otherUserHasEncryptionKey: Boolean(otherUserKey),
       createdAt: toIso(thread.createdAt),
       lastMessageAt: toIsoOrNull(lastMessage?.createdAt),
       lastMessagePreview: lastMessage?.content ?? null,
