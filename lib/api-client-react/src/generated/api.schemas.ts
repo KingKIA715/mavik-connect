@@ -155,6 +155,9 @@ export interface DmThread {
   otherUserEmail: string;
   /** @nullable */
   otherUserAvatarUrl?: string | null;
+  /** @nullable */
+  otherUserPublicKey?: string | null;
+  otherUserHasEncryptionKey: boolean;
   createdAt: string;
   /** @nullable */
   lastMessageAt?: string | null;
