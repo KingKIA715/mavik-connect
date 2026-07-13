@@ -56,3 +56,14 @@ root.render(
     <App />
   </ErrorBoundary>,
 );
+
+// Register the service worker under the app's actual base path (Replit
+// deploys can serve this app from a sub-path, not always "/"), so its scope
+// matches where the app is really running.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL })
+      .catch((err) => console.error("Service worker registration failed:", err));
+  });
+}
