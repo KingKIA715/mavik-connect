@@ -16,6 +16,10 @@ import { logger } from "../lib/logger";
  * Client -> server:
  *   { type: "signal", to: string, data: unknown }     WebRTC offer/answer/ice-candidate, relayed to one peer
  *   { type: "signal-broadcast", data: unknown }        relayed to all other peers in the group (e.g. call invite)
+ *
+ * DM threads use a separate `/api/ws?threadId=<id>` connection, authenticated
+ * the same way. Only `{ type: "message", message: DmMessage }` is broadcast
+ * there for now — no presence or WebRTC signaling for DMs yet.
  */
 
 interface Connection {
@@ -87,6 +91,57 @@ export function sendToUser(
   for (const conn of set) {
     if (conn.userId === userId && conn.ws.readyState === conn.ws.OPEN) {
       conn.ws.send(data);
+    }
+  }
+}
+
+/**
+ * Separate in-memory registry for DM thread connections (`/api/ws?threadId=<id>`).
+ * Kept independent from `groupConnections` since group and thread ids are
+ * both plain numbers from separate tables and must never be conflated.
+ */
+const threadConnections = new Map<number, Set<Connection>>();
+
+export function registerThreadConnection(
+  threadId: number,
+  userId: string,
+  ws: WebSocket,
+): Connection {
+  const conn: Connection = { ws, userId };
+  const set = threadConnections.get(threadId) ?? new Set<Connection>();
+  set.add(conn);
+  threadConnections.set(threadId, set);
+  return conn;
+}
+
+export function unregisterThreadConnection(
+  threadId: number,
+  conn: Connection,
+): void {
+  const set = threadConnections.get(threadId);
+  if (!set) return;
+  set.delete(conn);
+  if (set.size === 0) {
+    threadConnections.delete(threadId);
+  }
+}
+
+export function broadcastToThread(
+  threadId: number,
+  payload: unknown,
+  exclude?: Connection,
+): void {
+  const set = threadConnections.get(threadId);
+  if (!set) return;
+  const data = JSON.stringify(payload);
+  for (const conn of set) {
+    if (conn === exclude) continue;
+    if (conn.ws.readyState === conn.ws.OPEN) {
+      try {
+        conn.ws.send(data);
+      } catch (err) {
+        logger.error({ err, threadId }, "Failed to send WS message");
+      }
     }
   }
 }

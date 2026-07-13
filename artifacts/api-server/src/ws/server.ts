@@ -1,11 +1,19 @@
 import type { Server as HttpServer, IncomingMessage } from "http";
 import { WebSocketServer } from "ws";
 import { clerkClient } from "@clerk/express";
-import { db, groupMembersTable } from "@workspace/db";
+import { db, groupMembersTable, dmThreadsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { parseGroupId } from "../lib/groupAccess";
-import { registerConnection, unregisterConnection, broadcastToGroup, sendToUser } from "./hub";
+import { parseThreadId } from "../lib/dmAccess";
+import {
+  registerConnection,
+  unregisterConnection,
+  broadcastToGroup,
+  sendToUser,
+  registerThreadConnection,
+  unregisterThreadConnection,
+} from "./hub";
 
 export const WS_PATH = "/api/ws";
 
@@ -46,66 +54,120 @@ export function attachWebSocketServer(server: HttpServer): void {
 
     void (async () => {
       const userId = await authenticateUpgrade(req);
-      const groupId = parseGroupId(url.searchParams.get("groupId") ?? undefined);
-
-      if (!userId || groupId === null) {
+      if (!userId) {
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
         return;
       }
 
-      const [membership] = await db
-        .select({ userId: groupMembersTable.userId })
-        .from(groupMembersTable)
-        .where(
-          and(
-            eq(groupMembersTable.groupId, groupId),
-            eq(groupMembersTable.userId, userId),
-          ),
-        );
+      const groupIdParam = url.searchParams.get("groupId");
+      const threadIdParam = url.searchParams.get("threadId");
 
-      if (!membership) {
-        socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
-        socket.destroy();
+      if (groupIdParam !== null) {
+        const groupId = parseGroupId(groupIdParam);
+        if (groupId === null) {
+          socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+
+        const [membership] = await db
+          .select({ userId: groupMembersTable.userId })
+          .from(groupMembersTable)
+          .where(
+            and(
+              eq(groupMembersTable.groupId, groupId),
+              eq(groupMembersTable.userId, userId),
+            ),
+          );
+
+        if (!membership) {
+          socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          const conn = registerConnection(groupId, userId, ws);
+
+          ws.on("message", (raw) => {
+            let parsed: unknown;
+            try {
+              parsed = JSON.parse(raw.toString());
+            } catch {
+              return;
+            }
+            if (typeof parsed !== "object" || parsed === null) return;
+            const data = parsed as Record<string, unknown>;
+
+            if (data.type === "signal" && typeof data.to === "string") {
+              sendToUser(groupId, data.to, {
+                type: "signal",
+                from: userId,
+                data: data.data,
+              });
+            } else if (data.type === "signal-broadcast") {
+              broadcastToGroup(
+                groupId,
+                { type: "signal", from: userId, data: data.data },
+                conn,
+              );
+            }
+          });
+
+          ws.on("close", () => {
+            unregisterConnection(groupId, conn);
+          });
+
+          ws.on("error", (err) => {
+            logger.error({ err, groupId, userId }, "WS connection error");
+          });
+        });
         return;
       }
 
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        const conn = registerConnection(groupId, userId, ws);
+      if (threadIdParam !== null) {
+        const threadId = parseThreadId(threadIdParam);
+        if (threadId === null) {
+          socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+          socket.destroy();
+          return;
+        }
 
-        ws.on("message", (raw) => {
-          let parsed: unknown;
-          try {
-            parsed = JSON.parse(raw.toString());
-          } catch {
-            return;
-          }
-          if (typeof parsed !== "object" || parsed === null) return;
-          const data = parsed as Record<string, unknown>;
+        const [thread] = await db
+          .select({
+            userAId: dmThreadsTable.userAId,
+            userBId: dmThreadsTable.userBId,
+          })
+          .from(dmThreadsTable)
+          .where(eq(dmThreadsTable.id, threadId));
 
-          if (data.type === "signal" && typeof data.to === "string") {
-            sendToUser(groupId, data.to, {
-              type: "signal",
-              from: userId,
-              data: data.data,
-            });
-          } else if (data.type === "signal-broadcast") {
-            broadcastToGroup(
-              groupId,
-              { type: "signal", from: userId, data: data.data },
-              conn,
-            );
-          }
+        const isParticipant =
+          Boolean(thread) &&
+          (thread!.userAId === userId || thread!.userBId === userId);
+
+        if (!isParticipant) {
+          socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          const conn = registerThreadConnection(threadId, userId, ws);
+
+          ws.on("close", () => {
+            unregisterThreadConnection(threadId, conn);
+          });
+
+          ws.on("error", (err) => {
+            logger.error({ err, threadId, userId }, "WS connection error");
+          });
         });
+        return;
+      }
 
-        ws.on("close", () => {
-          unregisterConnection(groupId, conn);
-        });
-
-        ws.on("error", (err) => {
-          logger.error({ err, groupId, userId }, "WS connection error");
-        });
-      });
+      socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+      socket.destroy();
     })();
   });
 }
