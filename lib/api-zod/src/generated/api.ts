@@ -283,6 +283,8 @@ export const ListDmThreadsResponseItem = zod.object({
   "otherUserName": zod.string(),
   "otherUserEmail": zod.string(),
   "otherUserAvatarUrl": zod.string().nullish(),
+  "otherUserPublicKey": zod.string().nullish(),
+  "otherUserHasEncryptionKey": zod.boolean(),
   "createdAt": zod.string(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessagePreview": zod.string().nullish()
@@ -303,6 +305,8 @@ export const CreateDmThreadResponse = zod.object({
   "otherUserName": zod.string(),
   "otherUserEmail": zod.string(),
   "otherUserAvatarUrl": zod.string().nullish(),
+  "otherUserPublicKey": zod.string().nullish(),
+  "otherUserHasEncryptionKey": zod.boolean(),
   "createdAt": zod.string(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessagePreview": zod.string().nullish()
@@ -322,6 +326,8 @@ export const GetDmThreadResponse = zod.object({
   "otherUserName": zod.string(),
   "otherUserEmail": zod.string(),
   "otherUserAvatarUrl": zod.string().nullish(),
+  "otherUserPublicKey": zod.string().nullish(),
+  "otherUserHasEncryptionKey": zod.boolean(),
   "createdAt": zod.string(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessagePreview": zod.string().nullish()
