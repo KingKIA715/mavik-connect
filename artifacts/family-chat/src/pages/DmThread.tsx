@@ -195,8 +195,8 @@ export default function DmThread() {
       {/* Header */}
       <header className="flex-none h-16 border-b border-border bg-white px-3 sm:px-6 flex items-center justify-between shadow-sm z-10 gap-2">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <Link href="/app/dms">
-            <Button variant="ghost" size="icon" className="rounded-full flex-shrink-0" aria-label="Back to messages">
+          <Link href="/app" className="md:hidden flex-shrink-0">
+            <Button variant="ghost" size="icon" className="rounded-full" aria-label="Back to chats">
               <ArrowLeft className="w-5 h-5" />
             </Button>
           </Link>

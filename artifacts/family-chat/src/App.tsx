@@ -8,12 +8,9 @@ import { AppLayout } from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 
 import Landing from "@/pages/Landing";
-import Dashboard from "@/pages/Dashboard";
 import Settings from "@/pages/Settings";
-import ChatRoom from "@/pages/ChatRoom";
 import VideoCall from "@/pages/VideoCall";
-import DmInbox from "@/pages/DmInbox";
-import DmThread from "@/pages/DmThread";
+import ChatsShell from "@/pages/ChatsShell";
 import DmVideoCall from "@/pages/DmVideoCall";
 
 const queryClient = new QueryClient();
@@ -81,7 +78,7 @@ function Router() {
         <Route path="/sign-up/*?" component={SignUpPage} />
 
         <Route path="/app">
-          <ProtectedRoute component={Dashboard} />
+          <ProtectedRoute component={ChatsShell} />
         </Route>
 
         <Route path="/app/settings">
@@ -89,19 +86,15 @@ function Router() {
         </Route>
 
         <Route path="/app/groups/:groupId">
-          <ProtectedRoute component={ChatRoom} />
+          <ProtectedRoute component={ChatsShell} />
         </Route>
 
         <Route path="/app/groups/:groupId/call">
           <ProtectedRoute component={VideoCall} />
         </Route>
 
-        <Route path="/app/dms">
-          <ProtectedRoute component={DmInbox} />
-        </Route>
-
         <Route path="/app/dms/:threadId">
-          <ProtectedRoute component={DmThread} />
+          <ProtectedRoute component={ChatsShell} />
         </Route>
 
         <Route path="/app/dms/:threadId/call">

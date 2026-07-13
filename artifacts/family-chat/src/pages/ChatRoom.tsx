@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Video, Phone, Send, UserPlus, Users, Lock, ShieldAlert, Crown, Paperclip, Download, FileText } from "lucide-react";
 import { format } from "date-fns";
@@ -232,6 +233,11 @@ export default function ChatRoom() {
       {/* Header */}
       <header className="flex-none h-16 border-b border-border bg-white px-3 sm:px-6 flex items-center justify-between shadow-sm z-10 gap-2">
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <Link href="/app" className="md:hidden flex-shrink-0">
+            <Button variant="ghost" size="icon" className="rounded-full" aria-label="Back to chats">
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+          </Link>
           <h2 className="font-serif text-lg sm:text-xl font-bold text-foreground truncate max-w-[40vw] sm:max-w-none">{group.name}</h2>
           <Dialog open={isMembersOpen} onOpenChange={setIsMembersOpen}>
             <DialogTrigger asChild>
