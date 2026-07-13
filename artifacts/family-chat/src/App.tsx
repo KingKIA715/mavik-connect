@@ -14,6 +14,7 @@ import ChatRoom from "@/pages/ChatRoom";
 import VideoCall from "@/pages/VideoCall";
 import DmInbox from "@/pages/DmInbox";
 import DmThread from "@/pages/DmThread";
+import DmVideoCall from "@/pages/DmVideoCall";
 
 const queryClient = new QueryClient();
 
@@ -101,6 +102,10 @@ function Router() {
 
         <Route path="/app/dms/:threadId">
           <ProtectedRoute component={DmThread} />
+        </Route>
+
+        <Route path="/app/dms/:threadId/call">
+          <ProtectedRoute component={DmVideoCall} />
         </Route>
 
         <Route component={NotFound} />

@@ -13,6 +13,8 @@ import {
   sendToUser,
   registerThreadConnection,
   unregisterThreadConnection,
+  broadcastToThread,
+  sendToUserInThread,
 } from "./hub";
 
 export const WS_PATH = "/api/ws";
@@ -154,6 +156,31 @@ export function attachWebSocketServer(server: HttpServer): void {
 
         wss.handleUpgrade(req, socket, head, (ws) => {
           const conn = registerThreadConnection(threadId, userId, ws);
+
+          ws.on("message", (raw) => {
+            let parsed: unknown;
+            try {
+              parsed = JSON.parse(raw.toString());
+            } catch {
+              return;
+            }
+            if (typeof parsed !== "object" || parsed === null) return;
+            const data = parsed as Record<string, unknown>;
+
+            if (data.type === "signal" && typeof data.to === "string") {
+              sendToUserInThread(threadId, data.to, {
+                type: "signal",
+                from: userId,
+                data: data.data,
+              });
+            } else if (data.type === "signal-broadcast") {
+              broadcastToThread(
+                threadId,
+                { type: "signal", from: userId, data: data.data },
+                conn,
+              );
+            }
+          });
 
           ws.on("close", () => {
             unregisterThreadConnection(threadId, conn);

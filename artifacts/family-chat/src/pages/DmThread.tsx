@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Send, Lock, ShieldAlert, Paperclip, Download, FileText } from "lucide-react";
+import { ArrowLeft, Send, Lock, ShieldAlert, Paperclip, Download, FileText, Phone, Video } from "lucide-react";
 import { format } from "date-fns";
 import {
   useEncryption,
@@ -222,6 +222,22 @@ export default function DmThread() {
               Waiting for access
             </div>
           )}
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Link href={`/app/dms/${threadId}/call?mode=voice`}>
+            <Button variant="outline" className="rounded-full gap-2 px-2.5 sm:px-4" aria-label="Voice call">
+              <Phone className="w-4 h-4" />
+              <span className="hidden sm:inline">Voice Call</span>
+            </Button>
+          </Link>
+
+          <Link href={`/app/dms/${threadId}/call`}>
+            <Button className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md gap-2 px-2.5 sm:px-4" aria-label="Video call">
+              <Video className="w-4 h-4" />
+              <span className="hidden sm:inline">Join Call</span>
+            </Button>
+          </Link>
         </div>
       </header>
 

@@ -67,17 +67,21 @@ export function useWebSocket(groupId?: string) {
   };
 }
 
-type DmWsMessage = { type: "message"; message: DmMessage };
+type DmWsMessage =
+  | { type: "message"; message: DmMessage }
+  | { type: "signal"; from: string; data: any }
+  | { type: "signal-broadcast"; data: any };
 
 /**
  * Same idea as useWebSocket, but connects to a DM thread (`?threadId=`)
- * instead of a group. The server only ever sends `{ type: "message" }` on
- * this connection — no presence or WebRTC signaling for DMs.
+ * instead of a group. Supports the same message + signal protocol — just no
+ * presence broadcast, since a DM only ever has the one other participant.
  */
 export function useThreadWebSocket(threadId?: string) {
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef<((msg: DmMessage) => void) | null>(null);
+  const onSignalRef = useRef<((from: string, data: any) => void) | null>(null);
 
   useEffect(() => {
     if (!threadId) return;
@@ -97,6 +101,8 @@ export function useThreadWebSocket(threadId?: string) {
         const data = JSON.parse(event.data) as DmWsMessage;
         if (data.type === "message" && onMessageRef.current) {
           onMessageRef.current(data.message);
+        } else if (data.type === "signal" && onSignalRef.current) {
+          onSignalRef.current(data.from, data.data);
         }
       } catch (err) {
         console.error("Failed to parse WS message", err);
@@ -110,5 +116,11 @@ export function useThreadWebSocket(threadId?: string) {
     };
   }, [threadId]);
 
-  return { isConnected, onMessageRef };
+  const sendMessage = useCallback((data: any) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(data));
+    }
+  }, []);
+
+  return { isConnected, sendMessage, onMessageRef, onSignalRef };
 }

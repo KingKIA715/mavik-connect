@@ -18,8 +18,9 @@ import { logger } from "../lib/logger";
  *   { type: "signal-broadcast", data: unknown }        relayed to all other peers in the group (e.g. call invite)
  *
  * DM threads use a separate `/api/ws?threadId=<id>` connection, authenticated
- * the same way. Only `{ type: "message", message: DmMessage }` is broadcast
- * there for now — no presence or WebRTC signaling for DMs yet.
+ * the same way, supporting the same message + signal protocol as groups
+ * (always exactly 2 participants instead of N). No presence broadcast for
+ * DMs — not needed with only one other person.
  */
 
 interface Connection {
@@ -142,6 +143,21 @@ export function broadcastToThread(
       } catch (err) {
         logger.error({ err, threadId }, "Failed to send WS message");
       }
+    }
+  }
+}
+
+export function sendToUserInThread(
+  threadId: number,
+  userId: string,
+  payload: unknown,
+): void {
+  const set = threadConnections.get(threadId);
+  if (!set) return;
+  const data = JSON.stringify(payload);
+  for (const conn of set) {
+    if (conn.userId === userId && conn.ws.readyState === conn.ws.OPEN) {
+      conn.ws.send(data);
     }
   }
 }
