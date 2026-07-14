@@ -45,6 +45,7 @@ import type {
   PublicKeyInput,
   SearchUserByEmailParams,
   SearchUserResult,
+  UpdateMyProfileInput,
   UserProfile
 } from './api.schemas';
 
@@ -230,6 +231,77 @@ export function useGetMyProfile<TData = Awaited<ReturnType<typeof getMyProfile>>
 
 
 
+
+export const getUpdateMyProfileUrl = () => {
+
+
+
+
+  return `/api/users/me`
+}
+
+/**
+ * Keeps this app's local display name (shown on messages, DM lists, member lists, etc.) in sync after the user edits their first/last name through Clerk. Call this right after a successful Clerk `user.update({ firstName, lastName })` on the frontend — this endpoint does not talk to Clerk itself.
+ * @summary Update the current user's display name
+ */
+export const updateMyProfile = async (updateMyProfileInput: UpdateMyProfileInput, options?: RequestInit): Promise<UserProfile> => {
+
+  return customFetch<UserProfile>(getUpdateMyProfileUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateMyProfileInput)
+  }
+);}
+
+
+
+
+export const getUpdateMyProfileMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMyProfile>>, TError,{data: BodyType<UpdateMyProfileInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMyProfile>>, TError,{data: BodyType<UpdateMyProfileInput>}, TContext> => {
+
+const mutationKey = ['updateMyProfile'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMyProfile>>, {data: BodyType<UpdateMyProfileInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateMyProfile(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMyProfileMutationResult = NonNullable<Awaited<ReturnType<typeof updateMyProfile>>>
+    export type UpdateMyProfileMutationBody = BodyType<UpdateMyProfileInput>
+    export type UpdateMyProfileMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update the current user's display name
+ */
+export const useUpdateMyProfile = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMyProfile>>, TError,{data: BodyType<UpdateMyProfileInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMyProfile>>,
+        TError,
+        {data: BodyType<UpdateMyProfileInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateMyProfileMutationOptions(options));
+    }
 
 export const getSetMyPublicKeyUrl = () => {
 
@@ -610,77 +682,6 @@ export function useGetGroup<TData = Awaited<ReturnType<typeof getGroup>>, TError
 
 
 
-
-export const getDeleteGroupUrl = (groupId: string,) => {
-
-
-
-
-  return `/api/groups/${groupId}`
-}
-
-/**
- * Only the group's creator can do this. Deletes the group and everything in it (members, messages, encryption keys) via cascading foreign keys, and notifies any currently-connected members over WebSocket so their clients can leave the chat immediately.
- * @summary Delete an entire group
- */
-export const deleteGroup = async (groupId: string, options?: RequestInit): Promise<void> => {
-
-  return customFetch<void>(getDeleteGroupUrl(groupId),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
-
-export const getDeleteGroupMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteGroup>>, TError,{groupId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteGroup>>, TError,{groupId: string}, TContext> => {
-
-const mutationKey = ['deleteGroup'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteGroup>>, {groupId: string}> = (props) => {
-          const {groupId} = props ?? {};
-
-          return  deleteGroup(groupId,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type DeleteGroupMutationResult = NonNullable<Awaited<ReturnType<typeof deleteGroup>>>
-
-    export type DeleteGroupMutationError = ErrorType<void>
-
-    /**
- * @summary Delete an entire group
- */
-export const useDeleteGroup = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteGroup>>, TError,{groupId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof deleteGroup>>,
-        TError,
-        {groupId: string},
-        TContext
-      > => {
-      return useMutation(getDeleteGroupMutationOptions(options));
-    }
 
 export const getAddGroupMemberUrl = (groupId: string,) => {
 

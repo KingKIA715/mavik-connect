@@ -32,6 +32,27 @@ export const GetMyProfileResponse = zod.object({
 
 
 /**
+ * Keeps this app's local display name (shown on messages, DM lists, member lists, etc.) in sync after the user edits their first/last name through Clerk. Call this right after a successful Clerk `user.update({ firstName, lastName })` on the frontend — this endpoint does not talk to Clerk itself.
+ * @summary Update the current user's display name
+ */
+
+
+
+export const UpdateMyProfileBody = zod.object({
+  "name": zod.string().min(1)
+})
+
+export const UpdateMyProfileResponse = zod.object({
+  "id": zod.string(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "publicKey": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
  * Uploads the client-generated RSA-OAEP public key used to wrap per-group encryption keys for this user. Idempotent.
  * @summary Set the current user's end-to-end encryption public key
  */
@@ -128,17 +149,6 @@ export const GetGroupResponse = zod.object({
   "joinedAt": zod.string()
 }))
 })
-
-
-/**
- * Only the group's creator can do this. Deletes the group and everything in it (members, messages, encryption keys) via cascading foreign keys, and notifies any currently-connected members over WebSocket so their clients can leave the chat immediately.
- * @summary Delete an entire group
- */
-export const DeleteGroupParams = zod.object({
-  "groupId": zod.coerce.string()
-})
-
-export const DeleteGroupResponse = zod.void()
 
 
 /**

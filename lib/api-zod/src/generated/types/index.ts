@@ -35,4 +35,5 @@ export * from './messageType';
 export * from './publicKeyInput';
 export * from './searchUserByEmailParams';
 export * from './searchUserResult';
+export * from './updateMyProfileInput';
 export * from './userProfile';

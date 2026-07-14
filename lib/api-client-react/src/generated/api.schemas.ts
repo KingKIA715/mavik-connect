@@ -25,6 +25,11 @@ export interface PublicKeyInput {
   publicKey: string;
 }
 
+export interface UpdateMyProfileInput {
+  /** @minLength 1 */
+  name: string;
+}
+
 export interface Group {
   id: string;
   name: string;
