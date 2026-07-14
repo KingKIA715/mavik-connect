@@ -23,4 +23,8 @@ export interface Message {
   /** @nullable */
   fileSize?: number | null;
   createdAt: string;
+  /** @nullable */
+  editedAt?: string | null;
+  /** @nullable */
+  deletedAt?: string | null;
 }

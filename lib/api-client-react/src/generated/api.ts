@@ -24,6 +24,7 @@ import type {
   DmKeyInput,
   DmKeyResponse,
   DmMessage,
+  DmMessageEditInput,
   DmMessageInput,
   DmThread,
   DmThreadInput,
@@ -39,6 +40,7 @@ import type {
   ListDmMessagesParams,
   ListMessagesParams,
   Message,
+  MessageEditInput,
   MessageInput,
   PublicKeyInput,
   SearchUserByEmailParams,
@@ -1063,6 +1065,153 @@ export const useSendMessage = <TError = ErrorType<unknown>,
       return useMutation(getSendMessageMutationOptions(options));
     }
 
+export const getEditMessageUrl = (groupId: string,
+    messageId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/messages/${messageId}`
+}
+
+/**
+ * Only the original sender can edit their own message, and only text messages can be edited (not file attachments).
+ * @summary Edit a text message you sent
+ */
+export const editMessage = async (groupId: string,
+    messageId: string,
+    messageEditInput: MessageEditInput, options?: RequestInit): Promise<Message> => {
+
+  return customFetch<Message>(getEditMessageUrl(groupId,messageId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(messageEditInput)
+  }
+);}
+
+
+
+
+export const getEditMessageMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editMessage>>, TError,{groupId: string;messageId: string;data: BodyType<MessageEditInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof editMessage>>, TError,{groupId: string;messageId: string;data: BodyType<MessageEditInput>}, TContext> => {
+
+const mutationKey = ['editMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof editMessage>>, {groupId: string;messageId: string;data: BodyType<MessageEditInput>}> = (props) => {
+          const {groupId,messageId,data} = props ?? {};
+
+          return  editMessage(groupId,messageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EditMessageMutationResult = NonNullable<Awaited<ReturnType<typeof editMessage>>>
+    export type EditMessageMutationBody = BodyType<MessageEditInput>
+    export type EditMessageMutationError = ErrorType<void>
+
+    /**
+ * @summary Edit a text message you sent
+ */
+export const useEditMessage = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editMessage>>, TError,{groupId: string;messageId: string;data: BodyType<MessageEditInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof editMessage>>,
+        TError,
+        {groupId: string;messageId: string;data: BodyType<MessageEditInput>},
+        TContext
+      > => {
+      return useMutation(getEditMessageMutationOptions(options));
+    }
+
+export const getDeleteMessageUrl = (groupId: string,
+    messageId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/messages/${messageId}`
+}
+
+/**
+ * Soft-deletes the message: content and any attachment are cleared, but the message row remains (shown as "This message was deleted"). Only the original sender can delete their own message.
+ * @summary Delete a message you sent
+ */
+export const deleteMessage = async (groupId: string,
+    messageId: string, options?: RequestInit): Promise<Message> => {
+
+  return customFetch<Message>(getDeleteMessageUrl(groupId,messageId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteMessageMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMessage>>, TError,{groupId: string;messageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMessage>>, TError,{groupId: string;messageId: string}, TContext> => {
+
+const mutationKey = ['deleteMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMessage>>, {groupId: string;messageId: string}> = (props) => {
+          const {groupId,messageId} = props ?? {};
+
+          return  deleteMessage(groupId,messageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMessageMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMessage>>>
+
+    export type DeleteMessageMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete a message you sent
+ */
+export const useDeleteMessage = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMessage>>, TError,{groupId: string;messageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMessage>>,
+        TError,
+        {groupId: string;messageId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteMessageMutationOptions(options));
+    }
+
 export const getListDmThreadsUrl = () => {
 
 
@@ -1596,6 +1745,153 @@ export const useSendDmMessage = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getSendDmMessageMutationOptions(options));
+    }
+
+export const getEditDmMessageUrl = (threadId: string,
+    messageId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/messages/${messageId}`
+}
+
+/**
+ * Only the original sender can edit their own message, and only text messages can be edited (not file attachments).
+ * @summary Edit a text message you sent in a DM thread
+ */
+export const editDmMessage = async (threadId: string,
+    messageId: string,
+    dmMessageEditInput: DmMessageEditInput, options?: RequestInit): Promise<DmMessage> => {
+
+  return customFetch<DmMessage>(getEditDmMessageUrl(threadId,messageId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(dmMessageEditInput)
+  }
+);}
+
+
+
+
+export const getEditDmMessageMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editDmMessage>>, TError,{threadId: string;messageId: string;data: BodyType<DmMessageEditInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof editDmMessage>>, TError,{threadId: string;messageId: string;data: BodyType<DmMessageEditInput>}, TContext> => {
+
+const mutationKey = ['editDmMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof editDmMessage>>, {threadId: string;messageId: string;data: BodyType<DmMessageEditInput>}> = (props) => {
+          const {threadId,messageId,data} = props ?? {};
+
+          return  editDmMessage(threadId,messageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EditDmMessageMutationResult = NonNullable<Awaited<ReturnType<typeof editDmMessage>>>
+    export type EditDmMessageMutationBody = BodyType<DmMessageEditInput>
+    export type EditDmMessageMutationError = ErrorType<void>
+
+    /**
+ * @summary Edit a text message you sent in a DM thread
+ */
+export const useEditDmMessage = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editDmMessage>>, TError,{threadId: string;messageId: string;data: BodyType<DmMessageEditInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof editDmMessage>>,
+        TError,
+        {threadId: string;messageId: string;data: BodyType<DmMessageEditInput>},
+        TContext
+      > => {
+      return useMutation(getEditDmMessageMutationOptions(options));
+    }
+
+export const getDeleteDmMessageUrl = (threadId: string,
+    messageId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/messages/${messageId}`
+}
+
+/**
+ * Soft-deletes the message: content and any attachment are cleared, but the message row remains (shown as "This message was deleted"). Only the original sender can delete their own message.
+ * @summary Delete a message you sent in a DM thread
+ */
+export const deleteDmMessage = async (threadId: string,
+    messageId: string, options?: RequestInit): Promise<DmMessage> => {
+
+  return customFetch<DmMessage>(getDeleteDmMessageUrl(threadId,messageId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteDmMessageMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDmMessage>>, TError,{threadId: string;messageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteDmMessage>>, TError,{threadId: string;messageId: string}, TContext> => {
+
+const mutationKey = ['deleteDmMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteDmMessage>>, {threadId: string;messageId: string}> = (props) => {
+          const {threadId,messageId} = props ?? {};
+
+          return  deleteDmMessage(threadId,messageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteDmMessageMutationResult = NonNullable<Awaited<ReturnType<typeof deleteDmMessage>>>
+
+    export type DeleteDmMessageMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete a message you sent in a DM thread
+ */
+export const useDeleteDmMessage = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDmMessage>>, TError,{threadId: string;messageId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteDmMessage>>,
+        TError,
+        {threadId: string;messageId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteDmMessageMutationOptions(options));
     }
 
 export const getGetRecentActivityUrl = (params?: GetRecentActivityParams,) => {

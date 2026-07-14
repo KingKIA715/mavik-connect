@@ -234,7 +234,9 @@ export const ListMessagesResponseItem = zod.object({
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "editedAt": zod.string().nullish(),
+  "deletedAt": zod.string().nullish()
 })
 export const ListMessagesResponse = zod.array(ListMessagesResponseItem)
 
@@ -270,7 +272,72 @@ export const SendMessageResponse = zod.object({
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "editedAt": zod.string().nullish(),
+  "deletedAt": zod.string().nullish()
+})
+
+
+/**
+ * Only the original sender can edit their own message, and only text messages can be edited (not file attachments).
+ * @summary Edit a text message you sent
+ */
+export const EditMessageParams = zod.object({
+  "groupId": zod.coerce.string(),
+  "messageId": zod.coerce.string()
+})
+
+
+
+
+export const EditMessageBody = zod.object({
+  "content": zod.string().min(1)
+})
+
+export const editMessageResponseTypeDefault = `text`;
+
+export const EditMessageResponse = zod.object({
+  "id": zod.string(),
+  "groupId": zod.string(),
+  "senderId": zod.string(),
+  "senderName": zod.string(),
+  "senderAvatarUrl": zod.string().nullish(),
+  "content": zod.string(),
+  "type": zod.enum(['text', 'file']).default(editMessageResponseTypeDefault),
+  "fileName": zod.string().nullish(),
+  "mimeType": zod.string().nullish(),
+  "fileSize": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "editedAt": zod.string().nullish(),
+  "deletedAt": zod.string().nullish()
+})
+
+
+/**
+ * Soft-deletes the message: content and any attachment are cleared, but the message row remains (shown as "This message was deleted"). Only the original sender can delete their own message.
+ * @summary Delete a message you sent
+ */
+export const DeleteMessageParams = zod.object({
+  "groupId": zod.coerce.string(),
+  "messageId": zod.coerce.string()
+})
+
+export const deleteMessageResponseTypeDefault = `text`;
+
+export const DeleteMessageResponse = zod.object({
+  "id": zod.string(),
+  "groupId": zod.string(),
+  "senderId": zod.string(),
+  "senderName": zod.string(),
+  "senderAvatarUrl": zod.string().nullish(),
+  "content": zod.string(),
+  "type": zod.enum(['text', 'file']).default(deleteMessageResponseTypeDefault),
+  "fileName": zod.string().nullish(),
+  "mimeType": zod.string().nullish(),
+  "fileSize": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "editedAt": zod.string().nullish(),
+  "deletedAt": zod.string().nullish()
 })
 
 
@@ -404,7 +471,9 @@ export const ListDmMessagesResponseItem = zod.object({
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "editedAt": zod.string().nullish(),
+  "deletedAt": zod.string().nullish()
 })
 export const ListDmMessagesResponse = zod.array(ListDmMessagesResponseItem)
 
@@ -440,7 +509,72 @@ export const SendDmMessageResponse = zod.object({
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "editedAt": zod.string().nullish(),
+  "deletedAt": zod.string().nullish()
+})
+
+
+/**
+ * Only the original sender can edit their own message, and only text messages can be edited (not file attachments).
+ * @summary Edit a text message you sent in a DM thread
+ */
+export const EditDmMessageParams = zod.object({
+  "threadId": zod.coerce.string(),
+  "messageId": zod.coerce.string()
+})
+
+
+
+
+export const EditDmMessageBody = zod.object({
+  "content": zod.string().min(1)
+})
+
+export const editDmMessageResponseTypeDefault = `text`;
+
+export const EditDmMessageResponse = zod.object({
+  "id": zod.string(),
+  "threadId": zod.string(),
+  "senderId": zod.string(),
+  "senderName": zod.string(),
+  "senderAvatarUrl": zod.string().nullish(),
+  "content": zod.string(),
+  "type": zod.enum(['text', 'file']).default(editDmMessageResponseTypeDefault),
+  "fileName": zod.string().nullish(),
+  "mimeType": zod.string().nullish(),
+  "fileSize": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "editedAt": zod.string().nullish(),
+  "deletedAt": zod.string().nullish()
+})
+
+
+/**
+ * Soft-deletes the message: content and any attachment are cleared, but the message row remains (shown as "This message was deleted"). Only the original sender can delete their own message.
+ * @summary Delete a message you sent in a DM thread
+ */
+export const DeleteDmMessageParams = zod.object({
+  "threadId": zod.coerce.string(),
+  "messageId": zod.coerce.string()
+})
+
+export const deleteDmMessageResponseTypeDefault = `text`;
+
+export const DeleteDmMessageResponse = zod.object({
+  "id": zod.string(),
+  "threadId": zod.string(),
+  "senderId": zod.string(),
+  "senderName": zod.string(),
+  "senderAvatarUrl": zod.string().nullish(),
+  "content": zod.string(),
+  "type": zod.enum(['text', 'file']).default(deleteDmMessageResponseTypeDefault),
+  "fileName": zod.string().nullish(),
+  "mimeType": zod.string().nullish(),
+  "fileSize": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "editedAt": zod.string().nullish(),
+  "deletedAt": zod.string().nullish()
 })
 
 

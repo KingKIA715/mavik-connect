@@ -103,6 +103,10 @@ export interface Message {
   /** @nullable */
   fileSize?: number | null;
   createdAt: string;
+  /** @nullable */
+  editedAt?: string | null;
+  /** @nullable */
+  deletedAt?: string | null;
 }
 
 export type MessageInputType = typeof MessageInputType[keyof typeof MessageInputType];
@@ -123,6 +127,11 @@ export interface MessageInput {
   mimeType?: string | null;
   /** @nullable */
   fileSize?: number | null;
+}
+
+export interface MessageEditInput {
+  /** @minLength 1 */
+  content: string;
 }
 
 export interface ActivityItem {
@@ -189,6 +198,10 @@ export interface DmMessage {
   /** @nullable */
   fileSize?: number | null;
   createdAt: string;
+  /** @nullable */
+  editedAt?: string | null;
+  /** @nullable */
+  deletedAt?: string | null;
 }
 
 export type DmMessageInputType = typeof DmMessageInputType[keyof typeof DmMessageInputType];
@@ -209,6 +222,11 @@ export interface DmMessageInput {
   mimeType?: string | null;
   /** @nullable */
   fileSize?: number | null;
+}
+
+export interface DmMessageEditInput {
+  /** @minLength 1 */
+  content: string;
 }
 
 export interface DmKeyResponse {
