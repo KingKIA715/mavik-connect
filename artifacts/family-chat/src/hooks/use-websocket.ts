@@ -6,7 +6,8 @@ type WsMessage =
   | { type: "message-updated"; message: Message }
   | { type: "presence"; userIds: string[] }
   | { type: "signal"; from: string; data: any }
-  | { type: "signal-broadcast"; data: any };
+  | { type: "signal-broadcast"; data: any }
+  | { type: "group-deleted"; groupId: string };
 
 export function useWebSocket(groupId?: string) {
   const [isConnected, setIsConnected] = useState(false);
@@ -17,6 +18,7 @@ export function useWebSocket(groupId?: string) {
   const onMessageRef = useRef<((msg: Message) => void) | null>(null);
   const onMessageUpdateRef = useRef<((msg: Message) => void) | null>(null);
   const onSignalRef = useRef<((from: string, data: any) => void) | null>(null);
+  const onGroupDeletedRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!groupId) return;
@@ -43,6 +45,8 @@ export function useWebSocket(groupId?: string) {
           setPresence(data.userIds);
         } else if (data.type === "signal" && onSignalRef.current) {
           onSignalRef.current(data.from, data.data);
+        } else if (data.type === "group-deleted" && onGroupDeletedRef.current) {
+          onGroupDeletedRef.current();
         }
       } catch (err) {
         console.error("Failed to parse WS message", err);
@@ -68,7 +72,8 @@ export function useWebSocket(groupId?: string) {
     sendMessage,
     onMessageRef,
     onMessageUpdateRef,
-    onSignalRef
+    onSignalRef,
+    onGroupDeletedRef
   };
 }
 

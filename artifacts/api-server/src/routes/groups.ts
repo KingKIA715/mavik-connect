@@ -191,6 +191,42 @@ router.get("/groups/:groupId", async (req, res): Promise<void> => {
   );
 });
 
+router.delete("/groups/:groupId", async (req, res): Promise<void> => {
+  const groupId = parseGroupId(req.params.groupId);
+  if (groupId === null) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const userId = req.userId!;
+  const member = await isGroupMember(groupId, userId);
+  if (!member) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const [group] = await db
+    .select({ createdBy: groupsTable.createdBy })
+    .from(groupsTable)
+    .where(eq(groupsTable.id, groupId));
+  if (!group) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+  if (group.createdBy !== userId) {
+    res.status(403).json({ error: "Only the group's creator can delete it" });
+    return;
+  }
+
+  // Notify anyone currently connected before the row (and its cascading
+  // members/messages/keys) disappears out from under them.
+  broadcastToGroup(groupId, { type: "group-deleted", groupId: String(groupId) });
+
+  await db.delete(groupsTable).where(eq(groupsTable.id, groupId));
+
+  res.sendStatus(204);
+});
+
 router.post("/groups/:groupId/members", async (req, res): Promise<void> => {
   const groupId = parseGroupId(req.params.groupId);
   if (groupId === null) {

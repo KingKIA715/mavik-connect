@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
   useGetGroup, 
@@ -8,10 +8,12 @@ import {
   useEditMessage,
   useDeleteMessage,
   useAddGroupMember,
+  useDeleteGroup,
   useGetMyProfile,
   useSetGroupKey,
   getListMessagesQueryKey,
-  getGetGroupQueryKey
+  getGetGroupQueryKey,
+  getListGroupsQueryKey
 } from "@workspace/api-client-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { Button } from "@/components/ui/button";
@@ -41,6 +43,7 @@ const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB — keep encrypted+base64 payload 
 
 export default function ChatRoom() {
   const { groupId } = useParams<{ groupId: string }>();
+  const [, navigate] = useLocation();
   const { data: profile } = useGetMyProfile();
   const { data: group, isLoading: groupLoading } = useGetGroup(groupId!, { query: { enabled: !!groupId, queryKey: getGetGroupQueryKey(groupId!) } });
   const { data: messages, isLoading: messagesLoading } = useListMessages(groupId!, { query: { enabled: !!groupId, queryKey: getListMessagesQueryKey(groupId!) } });
@@ -49,6 +52,7 @@ export default function ChatRoom() {
   const editMessage = useEditMessage();
   const deleteMessage = useDeleteMessage();
   const addMember = useAddGroupMember();
+  const deleteGroup = useDeleteGroup();
   const setGroupKey = useSetGroupKey();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -65,11 +69,12 @@ export default function ChatRoom() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [isDeleteGroupConfirmOpen, setIsDeleteGroupConfirmOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { isConnected, onMessageRef, onMessageUpdateRef } = useWebSocket(groupId);
+  const { isConnected, onMessageRef, onMessageUpdateRef, onGroupDeletedRef } = useWebSocket(groupId);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -99,6 +104,16 @@ export default function ChatRoom() {
       });
     };
   }, [groupId, queryClient, onMessageUpdateRef]);
+
+  // The creator deleted this group entirely — everyone currently viewing it
+  // (including the creator's own other tabs) gets kicked back to the chat list.
+  useEffect(() => {
+    onGroupDeletedRef.current = () => {
+      queryClient.invalidateQueries({ queryKey: getListGroupsQueryKey() });
+      toast({ title: "Group deleted", description: "This group no longer exists." });
+      navigate("/app");
+    };
+  }, [queryClient, onGroupDeletedRef, toast, navigate]);
 
   // Decrypt messages as they arrive/load, whenever we have the group key
   useEffect(() => {
@@ -278,6 +293,19 @@ export default function ChatRoom() {
     }
   };
 
+  const handleConfirmDeleteGroup = async () => {
+    if (!groupId) return;
+    try {
+      await deleteGroup.mutateAsync({ groupId });
+      queryClient.invalidateQueries({ queryKey: getListGroupsQueryKey() });
+      navigate("/app");
+    } catch {
+      toast({ variant: "destructive", title: "Couldn't delete group", description: "Please try again." });
+    } finally {
+      setIsDeleteGroupConfirmOpen(false);
+    }
+  };
+
   if (groupLoading) return <div className="p-10 flex-1 flex items-center justify-center">Loading...</div>;
   if (!group) return <div className="p-10">Group not found</div>;
 
@@ -350,6 +378,19 @@ export default function ChatRoom() {
                 <UserPlus className="w-4 h-4 mr-2" />
                 Invite Someone New
               </Button>
+              {group.createdBy === profile?.id && (
+                <Button
+                  variant="outline"
+                  className="w-full mt-2 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => {
+                    setIsMembersOpen(false);
+                    setIsDeleteGroupConfirmOpen(true);
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Group
+                </Button>
+              )}
             </DialogContent>
           </Dialog>
           {groupKeyStatus === "ready" && (
@@ -570,6 +611,23 @@ export default function ChatRoom() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isDeleteGroupConfirmOpen} onOpenChange={setIsDeleteGroupConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{group.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the group for everyone — all messages, members, and attachments will be gone. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteGroup} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete Group
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
