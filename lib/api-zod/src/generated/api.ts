@@ -131,6 +131,17 @@ export const GetGroupResponse = zod.object({
 
 
 /**
+ * Only the group's creator can do this. Deletes the group and everything in it (members, messages, encryption keys) via cascading foreign keys, and notifies any currently-connected members over WebSocket so their clients can leave the chat immediately.
+ * @summary Delete an entire group
+ */
+export const DeleteGroupParams = zod.object({
+  "groupId": zod.coerce.string()
+})
+
+export const DeleteGroupResponse = zod.void()
+
+
+/**
  * @summary Add a member to a group by email
  */
 export const AddGroupMemberParams = zod.object({
