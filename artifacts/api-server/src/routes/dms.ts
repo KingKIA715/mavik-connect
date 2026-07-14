@@ -16,6 +16,9 @@ import {
   ListDmThreadsResponseItem,
   SendDmMessageBody,
   SendDmMessageResponse,
+  EditDmMessageBody,
+  EditDmMessageResponse,
+  DeleteDmMessageResponse,
   SetDmKeyBody,
   SetDmKeyResponse,
 } from "@workspace/api-zod";
@@ -361,6 +364,8 @@ router.get("/dms/:threadId/messages", async (req, res): Promise<void> => {
       mimeType: dmMessagesTable.mimeType,
       fileSize: dmMessagesTable.fileSize,
       createdAt: dmMessagesTable.createdAt,
+      editedAt: dmMessagesTable.editedAt,
+      deletedAt: dmMessagesTable.deletedAt,
     })
     .from(dmMessagesTable)
     .innerJoin(usersTable, eq(dmMessagesTable.senderId, usersTable.id))
@@ -376,6 +381,8 @@ router.get("/dms/:threadId/messages", async (req, res): Promise<void> => {
         id: String(row.id),
         threadId: String(row.threadId),
         createdAt: toIso(row.createdAt),
+        editedAt: toIsoOrNull(row.editedAt),
+        deletedAt: toIsoOrNull(row.deletedAt),
       }),
     ),
   );
@@ -431,11 +438,165 @@ router.post("/dms/:threadId/messages", async (req, res): Promise<void> => {
     mimeType: message.mimeType,
     fileSize: message.fileSize,
     createdAt: toIso(message.createdAt),
+    editedAt: null,
+    deletedAt: null,
   });
 
   broadcastToThread(threadId, { type: "message", message: payload });
 
   res.status(201).json(payload);
 });
+
+router.patch(
+  "/dms/:threadId/messages/:messageId",
+  async (req, res): Promise<void> => {
+    const threadId = parseThreadId(req.params.threadId);
+    const messageId = parseThreadId(req.params.messageId);
+    if (threadId === null || messageId === null) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+
+    const userId = req.userId!;
+    const member = await isThreadParticipant(threadId, userId);
+    if (!member) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+
+    const [existing] = await db
+      .select()
+      .from(dmMessagesTable)
+      .where(
+        and(
+          eq(dmMessagesTable.id, messageId),
+          eq(dmMessagesTable.threadId, threadId),
+        ),
+      );
+    if (!existing) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+    if (existing.senderId !== userId) {
+      res.status(403).json({ error: "You can only edit your own messages" });
+      return;
+    }
+    if (existing.type !== "text" || existing.deletedAt) {
+      res.status(403).json({ error: "This message can't be edited" });
+      return;
+    }
+
+    const parsed = EditDmMessageBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    const [updated] = await db
+      .update(dmMessagesTable)
+      .set({ content: parsed.data.content, editedAt: new Date() })
+      .where(eq(dmMessagesTable.id, messageId))
+      .returning();
+
+    const [sender] = await db
+      .select({ name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId));
+
+    const payload = EditDmMessageResponse.parse({
+      id: String(updated.id),
+      threadId: String(updated.threadId),
+      senderId: updated.senderId,
+      senderName: sender?.name ?? "Family Member",
+      senderAvatarUrl: sender?.avatarUrl ?? null,
+      content: updated.content,
+      type: updated.type,
+      fileName: updated.fileName,
+      mimeType: updated.mimeType,
+      fileSize: updated.fileSize,
+      createdAt: toIso(updated.createdAt),
+      editedAt: toIsoOrNull(updated.editedAt),
+      deletedAt: toIsoOrNull(updated.deletedAt),
+    });
+
+    broadcastToThread(threadId, { type: "message-updated", message: payload });
+
+    res.json(payload);
+  },
+);
+
+router.delete(
+  "/dms/:threadId/messages/:messageId",
+  async (req, res): Promise<void> => {
+    const threadId = parseThreadId(req.params.threadId);
+    const messageId = parseThreadId(req.params.messageId);
+    if (threadId === null || messageId === null) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+
+    const userId = req.userId!;
+    const member = await isThreadParticipant(threadId, userId);
+    if (!member) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+
+    const [existing] = await db
+      .select()
+      .from(dmMessagesTable)
+      .where(
+        and(
+          eq(dmMessagesTable.id, messageId),
+          eq(dmMessagesTable.threadId, threadId),
+        ),
+      );
+    if (!existing) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+    if (existing.senderId !== userId) {
+      res.status(403).json({ error: "You can only delete your own messages" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(dmMessagesTable)
+      .set({
+        content: "",
+        fileName: null,
+        mimeType: null,
+        fileSize: null,
+        deletedAt: new Date(),
+      })
+      .where(eq(dmMessagesTable.id, messageId))
+      .returning();
+
+    const [sender] = await db
+      .select({ name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId));
+
+    const payload = DeleteDmMessageResponse.parse({
+      id: String(updated.id),
+      threadId: String(updated.threadId),
+      senderId: updated.senderId,
+      senderName: sender?.name ?? "Family Member",
+      senderAvatarUrl: sender?.avatarUrl ?? null,
+      content: updated.content,
+      type: updated.type,
+      fileName: updated.fileName,
+      mimeType: updated.mimeType,
+      fileSize: updated.fileSize,
+      createdAt: toIso(updated.createdAt),
+      editedAt: toIsoOrNull(updated.editedAt),
+      deletedAt: toIsoOrNull(updated.deletedAt),
+    });
+
+    broadcastToThread(threadId, { type: "message-updated", message: payload });
+
+    res.json(payload);
+  },
+);
 
 export default router;

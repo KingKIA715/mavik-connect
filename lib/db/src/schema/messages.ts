@@ -20,6 +20,8 @@ export const messagesTable = pgTable("messages", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+  editedAt: timestamp("edited_at", { withTimezone: true }),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
 export const insertMessageSchema = createInsertSchema(messagesTable).omit({

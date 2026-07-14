@@ -51,6 +51,8 @@ export const dmMessagesTable = pgTable("dm_messages", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+  editedAt: timestamp("edited_at", { withTimezone: true }),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
 export const insertDmMessageSchema = createInsertSchema(

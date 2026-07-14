@@ -3,6 +3,7 @@ import { Message, DmMessage } from "@workspace/api-client-react";
 
 type WsMessage = 
   | { type: "message"; message: Message }
+  | { type: "message-updated"; message: Message }
   | { type: "presence"; userIds: string[] }
   | { type: "signal"; from: string; data: any }
   | { type: "signal-broadcast"; data: any };
@@ -14,6 +15,7 @@ export function useWebSocket(groupId?: string) {
   
   // Callbacks for different message types
   const onMessageRef = useRef<((msg: Message) => void) | null>(null);
+  const onMessageUpdateRef = useRef<((msg: Message) => void) | null>(null);
   const onSignalRef = useRef<((from: string, data: any) => void) | null>(null);
 
   useEffect(() => {
@@ -35,6 +37,8 @@ export function useWebSocket(groupId?: string) {
         const data = JSON.parse(event.data) as WsMessage;
         if (data.type === "message" && onMessageRef.current) {
           onMessageRef.current(data.message);
+        } else if (data.type === "message-updated" && onMessageUpdateRef.current) {
+          onMessageUpdateRef.current(data.message);
         } else if (data.type === "presence") {
           setPresence(data.userIds);
         } else if (data.type === "signal" && onSignalRef.current) {
@@ -63,12 +67,14 @@ export function useWebSocket(groupId?: string) {
     presence,
     sendMessage,
     onMessageRef,
+    onMessageUpdateRef,
     onSignalRef
   };
 }
 
 type DmWsMessage =
   | { type: "message"; message: DmMessage }
+  | { type: "message-updated"; message: DmMessage }
   | { type: "signal"; from: string; data: any }
   | { type: "signal-broadcast"; data: any };
 
@@ -81,6 +87,7 @@ export function useThreadWebSocket(threadId?: string) {
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef<((msg: DmMessage) => void) | null>(null);
+  const onMessageUpdateRef = useRef<((msg: DmMessage) => void) | null>(null);
   const onSignalRef = useRef<((from: string, data: any) => void) | null>(null);
 
   useEffect(() => {
@@ -101,6 +108,8 @@ export function useThreadWebSocket(threadId?: string) {
         const data = JSON.parse(event.data) as DmWsMessage;
         if (data.type === "message" && onMessageRef.current) {
           onMessageRef.current(data.message);
+        } else if (data.type === "message-updated" && onMessageUpdateRef.current) {
+          onMessageUpdateRef.current(data.message);
         } else if (data.type === "signal" && onSignalRef.current) {
           onSignalRef.current(data.from, data.data);
         }
@@ -122,5 +131,5 @@ export function useThreadWebSocket(threadId?: string) {
     }
   }, []);
 
-  return { isConnected, sendMessage, onMessageRef, onSignalRef };
+  return { isConnected, sendMessage, onMessageRef, onMessageUpdateRef, onSignalRef };
 }

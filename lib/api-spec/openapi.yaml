@@ -314,6 +314,73 @@ paths:
               schema:
                 $ref: "#/components/schemas/Message"
 
+  /groups/{groupId}/messages/{messageId}:
+    patch:
+      operationId: editMessage
+      tags: [messages]
+      summary: Edit a text message you sent
+      description: >
+        Only the original sender can edit their own message, and only
+        text messages can be edited (not file attachments).
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageEditInput"
+      responses:
+        "200":
+          description: Updated message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "403":
+          description: Not the sender, or not a text message
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteMessage
+      tags: [messages]
+      summary: Delete a message you sent
+      description: >
+        Soft-deletes the message: content and any attachment are cleared,
+        but the message row remains (shown as "This message was deleted").
+        Only the original sender can delete their own message.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted message (soft-deleted)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "403":
+          description: Not the sender
+        "404":
+          description: Not found
+
   /dms:
     get:
       operationId: listDmThreads
@@ -487,6 +554,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DmMessage"
+
+  /dms/{threadId}/messages/{messageId}:
+    patch:
+      operationId: editDmMessage
+      tags: [dms]
+      summary: Edit a text message you sent in a DM thread
+      description: >
+        Only the original sender can edit their own message, and only
+        text messages can be edited (not file attachments).
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DmMessageEditInput"
+      responses:
+        "200":
+          description: Updated DM message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DmMessage"
+        "403":
+          description: Not the sender, or not a text message
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteDmMessage
+      tags: [dms]
+      summary: Delete a message you sent in a DM thread
+      description: >
+        Soft-deletes the message: content and any attachment are cleared,
+        but the message row remains (shown as "This message was deleted").
+        Only the original sender can delete their own message.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted DM message (soft-deleted)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DmMessage"
+        "403":
+          description: Not the sender
+        "404":
+          description: Not found
 
   /activity:
     get:
@@ -676,6 +810,10 @@ components:
           type: ["integer", "null"]
         createdAt:
           type: string
+        editedAt:
+          type: ["string", "null"]
+        deletedAt:
+          type: ["string", "null"]
 
     MessageInput:
       type: object
@@ -694,6 +832,14 @@ components:
           type: ["string", "null"]
         fileSize:
           type: ["integer", "null"]
+
+    MessageEditInput:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
 
     ActivityItem:
       type: object
@@ -787,6 +933,10 @@ components:
           type: ["integer", "null"]
         createdAt:
           type: string
+        editedAt:
+          type: ["string", "null"]
+        deletedAt:
+          type: ["string", "null"]
 
     DmMessageInput:
       type: object
@@ -805,6 +955,14 @@ components:
           type: ["string", "null"]
         fileSize:
           type: ["integer", "null"]
+
+    DmMessageEditInput:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
 
     DmKeyResponse:
       type: object

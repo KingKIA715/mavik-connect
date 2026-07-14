@@ -5,6 +5,8 @@ import {
   useGetGroup, 
   useListMessages, 
   useSendMessage, 
+  useEditMessage,
+  useDeleteMessage,
   useAddGroupMember,
   useGetMyProfile,
   useSetGroupKey,
@@ -16,8 +18,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Video, Phone, Send, UserPlus, Users, Lock, ShieldAlert, Crown, Paperclip, Download, FileText } from "lucide-react";
 import { format } from "date-fns";
@@ -33,6 +46,8 @@ export default function ChatRoom() {
   const { data: messages, isLoading: messagesLoading } = useListMessages(groupId!, { query: { enabled: !!groupId, queryKey: getListMessagesQueryKey(groupId!) } });
   
   const sendMessage = useSendMessage();
+  const editMessage = useEditMessage();
+  const deleteMessage = useDeleteMessage();
   const addMember = useAddGroupMember();
   const setGroupKey = useSetGroupKey();
   const queryClient = useQueryClient();
@@ -47,11 +62,14 @@ export default function ChatRoom() {
   const [decrypted, setDecrypted] = useState<Record<string, string>>({});
   const [fileUrls, setFileUrls] = useState<Record<string, string>>({});
   const [isUploading, setIsUploading] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { isConnected, onMessageRef } = useWebSocket(groupId);
+  const { isConnected, onMessageRef, onMessageUpdateRef } = useWebSocket(groupId);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -70,6 +88,17 @@ export default function ChatRoom() {
       });
     };
   }, [groupId, queryClient, onMessageRef]);
+
+  // Handle incoming edits/deletes (a delete is just an update where
+  // deletedAt gets set and content/attachment fields are cleared).
+  useEffect(() => {
+    onMessageUpdateRef.current = (msg) => {
+      queryClient.setQueryData(getListMessagesQueryKey(groupId!), (old: any) => {
+        if (!old) return old;
+        return old.map((m: any) => (m.id === msg.id ? msg : m));
+      });
+    };
+  }, [groupId, queryClient, onMessageUpdateRef]);
 
   // Decrypt messages as they arrive/load, whenever we have the group key
   useEffect(() => {
@@ -225,6 +254,30 @@ export default function ChatRoom() {
     });
   };
 
+  const handleSaveEdit = async (e: React.FormEvent, messageId: string) => {
+    e.preventDefault();
+    if (!editDraft.trim() || !groupId || !groupKey) return;
+
+    const encrypted = await encryptMessage(groupKey, editDraft);
+    try {
+      await editMessage.mutateAsync({ groupId, messageId, data: { content: encrypted } });
+      setEditingMessageId(null);
+    } catch {
+      toast({ variant: "destructive", title: "Couldn't save edit", description: "Please try again." });
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingMessageId || !groupId) return;
+    try {
+      await deleteMessage.mutateAsync({ groupId, messageId: deletingMessageId });
+    } catch {
+      toast({ variant: "destructive", title: "Couldn't delete message", description: "Please try again." });
+    } finally {
+      setDeletingMessageId(null);
+    }
+  };
+
   if (groupLoading) return <div className="p-10 flex-1 flex items-center justify-center">Loading...</div>;
   if (!group) return <div className="p-10">Group not found</div>;
 
@@ -372,7 +425,7 @@ export default function ChatRoom() {
               const showAvatar = !isMe && (idx === 0 || messages[idx - 1].senderId !== msg.senderId);
               
               return (
-                <div key={msg.id} className={`flex gap-3 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                <div key={msg.id} className={`flex gap-2 group ${isMe ? 'justify-end' : 'justify-start'}`}>
                   {!isMe && (
                     <div className="w-8 flex-shrink-0">
                       {showAvatar && (
@@ -385,12 +438,41 @@ export default function ChatRoom() {
                       )}
                     </div>
                   )}
+
+                  {isMe && !msg.deletedAt && editingMessageId !== msg.id && (
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-end pb-6">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" className="w-7 h-7 rounded-full text-muted-foreground" aria-label="Message actions">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {msg.type === "text" && (
+                            <DropdownMenuItem onClick={() => { setEditingMessageId(msg.id); setEditDraft(decrypted[msg.id] ?? ""); }}>
+                              <Pencil className="w-4 h-4 mr-2" /> Edit
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setDeletingMessageId(msg.id)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  )}
                   
                   <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[75%]`}>
                     {showAvatar && !isMe && (
                       <span className="text-xs text-muted-foreground ml-1 mb-1 font-medium">{msg.senderName}</span>
                     )}
-                    {msg.type === "file" ? (
+                    {msg.deletedAt ? (
+                      <div className="px-4 py-2.5 rounded-2xl text-sm italic text-muted-foreground bg-muted/50 border border-border">
+                        This message was deleted
+                      </div>
+                    ) : msg.type === "file" ? (
                       <FileBubble
                         isMe={isMe}
                         fileName={msg.fileName}
@@ -399,6 +481,23 @@ export default function ChatRoom() {
                         url={fileUrls[msg.id]}
                         ready={!!decrypted[msg.id] || !isEncryptedPayload(msg.content)}
                       />
+                    ) : editingMessageId === msg.id ? (
+                      <form onSubmit={(e) => handleSaveEdit(e, msg.id)} className="flex flex-col gap-1.5 w-full min-w-[220px]">
+                        <Input
+                          value={editDraft}
+                          onChange={(e) => setEditDraft(e.target.value)}
+                          autoFocus
+                          className="text-sm"
+                        />
+                        <div className="flex gap-2 justify-end">
+                          <Button type="button" size="sm" variant="ghost" onClick={() => setEditingMessageId(null)}>
+                            Cancel
+                          </Button>
+                          <Button type="submit" size="sm" disabled={!editDraft.trim() || editMessage.isPending}>
+                            Save
+                          </Button>
+                        </div>
+                      </form>
                     ) : (
                       <div className={`
                         px-4 py-2.5 rounded-2xl shadow-sm text-sm
@@ -410,8 +509,9 @@ export default function ChatRoom() {
                         {isEncryptedPayload(msg.content) ? (decrypted[msg.id] ?? "🔒 Decrypting…") : msg.content}
                       </div>
                     )}
-                    <span className="text-[10px] text-muted-foreground/60 mt-1 px-1">
+                    <span className="text-[10px] text-muted-foreground/60 mt-1 px-1 flex items-center gap-1">
                       {format(new Date(msg.createdAt), "h:mm a")}
+                      {msg.editedAt && !msg.deletedAt && <span>(edited)</span>}
                     </span>
                   </div>
                 </div>
@@ -457,6 +557,23 @@ export default function ChatRoom() {
           </Button>
         </form>
       </div>
+
+      <AlertDialog open={!!deletingMessageId} onOpenChange={(open) => !open && setDeletingMessageId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this message?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This can't be undone. The message (and its attachment, if any) will be replaced with "This message was deleted" for everyone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
