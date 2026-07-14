@@ -5,6 +5,7 @@ import {
   GetMyProfileResponse,
   SearchUserByEmailResponse,
   SetMyPublicKeyBody,
+  UpdateMyProfileBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { toIso } from "../lib/serialize";
@@ -43,6 +44,27 @@ router.get("/users/me", requireAuth, async (req, res): Promise<void> => {
     .select()
     .from(usersTable)
     .where(eq(usersTable.id, req.userId!));
+
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  res.json(GetMyProfileResponse.parse({ ...user, createdAt: toIso(user.createdAt) }));
+});
+
+router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
+  const parsed = UpdateMyProfileBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [user] = await db
+    .update(usersTable)
+    .set({ name: parsed.data.name })
+    .where(eq(usersTable.id, req.userId!))
+    .returning();
 
   if (!user) {
     res.status(404).json({ error: "User not found" });

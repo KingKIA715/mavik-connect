@@ -48,6 +48,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserProfile"
+    patch:
+      operationId: updateMyProfile
+      tags: [users]
+      summary: Update the current user's display name
+      description: >
+        Keeps this app's local display name (shown on messages, DM lists,
+        member lists, etc.) in sync after the user edits their first/last
+        name through Clerk. Call this right after a successful Clerk
+        `user.update({ firstName, lastName })` on the frontend — this
+        endpoint does not talk to Clerk itself.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMyProfileInput"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
 
   /users/me/public-key:
     put:
@@ -145,28 +168,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GroupDetail"
-        "404":
-          description: Not found
-    delete:
-      operationId: deleteGroup
-      tags: [groups]
-      summary: Delete an entire group
-      description: >
-        Only the group's creator can do this. Deletes the group and
-        everything in it (members, messages, encryption keys) via cascading
-        foreign keys, and notifies any currently-connected members over
-        WebSocket so their clients can leave the chat immediately.
-      parameters:
-        - name: groupId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: Deleted
-        "403":
-          description: Not the group's creator
         "404":
           description: Not found
 
@@ -710,6 +711,14 @@ components:
       required: [publicKey]
       properties:
         publicKey:
+          type: string
+          minLength: 1
+
+    UpdateMyProfileInput:
+      type: object
+      required: [name]
+      properties:
+        name:
           type: string
           minLength: 1
 
