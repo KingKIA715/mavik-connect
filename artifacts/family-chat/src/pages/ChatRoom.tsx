@@ -46,7 +46,7 @@ export default function ChatRoom() {
   const [, navigate] = useLocation();
   const { data: profile } = useGetMyProfile();
   const { data: group, isLoading: groupLoading } = useGetGroup(groupId!, { query: { enabled: !!groupId, queryKey: getGetGroupQueryKey(groupId!) } });
-  const { data: messages, isLoading: messagesLoading } = useListMessages(groupId!, { query: { enabled: !!groupId, queryKey: getListMessagesQueryKey(groupId!) } });
+  const { data: messages, isLoading: messagesLoading } = useListMessages(groupId!, undefined, { query: { enabled: !!groupId, queryKey: getListMessagesQueryKey(groupId!) } });
   
   const sendMessage = useSendMessage();
   const editMessage = useEditMessage();

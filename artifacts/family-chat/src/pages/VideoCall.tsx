@@ -123,7 +123,7 @@ export default function VideoCall() {
   );
 }
 
-function VoiceTile({ name, avatarUrl, isMuted }: { name: string; avatarUrl?: string; isMuted?: boolean }) {
+function VoiceTile({ name, avatarUrl, isMuted }: { name: string; avatarUrl?: string | null; isMuted?: boolean }) {
   return (
     <div className="relative rounded-2xl overflow-hidden bg-gray-900 shadow-xl aspect-video w-full max-w-3xl flex items-center justify-center">
       <Avatar className="w-24 h-24 border-2 border-white/10 shadow-xl">
