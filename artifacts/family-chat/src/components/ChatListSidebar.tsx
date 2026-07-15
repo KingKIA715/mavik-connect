@@ -15,8 +15,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Users } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Plus, Users, MessageCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useEncryption, createAndShareGroupKey, createAndShareDmKey } from "@/hooks/use-encryption";
 import { useToast } from "@/hooks/use-toast";
@@ -106,7 +107,7 @@ export function ChatListSidebar({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="relative flex flex-col h-full min-h-0">
       {/* Category tabs */}
       <div className="flex-none flex items-center gap-1 p-2 border-b border-border">
         <button
@@ -121,70 +122,10 @@ export function ChatListSidebar({
         >
           Direct Messages
         </button>
-
-        {tab === "groups" ? (
-          <Dialog open={isGroupDialogOpen} onOpenChange={setIsGroupDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="icon" variant="ghost" className="rounded-full flex-shrink-0" aria-label="New group">
-                <Plus className="w-5 h-5" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="font-serif text-xl">Create a New Group</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleCreateGroup} className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <label htmlFor="name" className="text-sm font-medium">Group Name</label>
-                  <Input
-                    id="name"
-                    value={newGroupName}
-                    onChange={(e) => setNewGroupName(e.target.value)}
-                    placeholder="e.g., The Smiths, Sunday Dinners"
-                    autoFocus
-                  />
-                </div>
-                <Button type="submit" disabled={isCreatingGroup || !identity} className="w-full">
-                  {isCreatingGroup ? "Creating..." : !identity ? "Setting up encryption..." : "Create Group"}
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        ) : (
-          <Dialog open={isDmDialogOpen} onOpenChange={setIsDmDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="icon" variant="ghost" className="rounded-full flex-shrink-0" aria-label="New message">
-                <Plus className="w-5 h-5" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="font-serif text-xl">Start a Conversation</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleStartConversation} className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <label htmlFor="dm-email" className="text-sm font-medium">Their Email</label>
-                  <Input
-                    id="dm-email"
-                    type="email"
-                    value={dmEmail}
-                    onChange={(e) => setDmEmail(e.target.value)}
-                    placeholder="mom@example.com"
-                    autoFocus
-                  />
-                  <p className="text-xs text-muted-foreground">They must have created an account first.</p>
-                </div>
-                <Button type="submit" disabled={isStartingDm || !identity} className="w-full">
-                  {isStartingDm ? "Starting..." : !identity ? "Setting up encryption..." : "Start Conversation"}
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        )}
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pb-20">
         {tab === "groups" ? (
           groupsLoading ? (
             <div className="p-2 space-y-2">
@@ -192,7 +133,7 @@ export function ChatListSidebar({
             </div>
           ) : groups?.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">
-              No groups yet. Tap + to create one.
+              No groups yet. Tap the + button to create one.
             </div>
           ) : (
             groups?.map(group => (
@@ -226,7 +167,7 @@ export function ChatListSidebar({
           </div>
         ) : threads?.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
-            No conversations yet. Tap + to message someone.
+            No conversations yet. Tap the + button to message someone.
           </div>
         ) : (
           threads?.map(thread => (
@@ -256,6 +197,75 @@ export function ChatListSidebar({
           ))
         )}
       </div>
+
+      {/* Single floating action button — choose Group Chat or Direct Message */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="icon"
+            className="absolute bottom-5 right-5 w-14 h-14 rounded-full shadow-lg z-10"
+            aria-label="Start a new chat"
+          >
+            <Plus className="w-6 h-6" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" side="top">
+          <DropdownMenuItem onClick={() => setIsGroupDialogOpen(true)}>
+            <Users className="w-4 h-4 mr-2" /> Group Chat
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setIsDmDialogOpen(true)}>
+            <MessageCircle className="w-4 h-4 mr-2" /> Direct Message
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog open={isGroupDialogOpen} onOpenChange={setIsGroupDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl">Create a New Group</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateGroup} className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <label htmlFor="name" className="text-sm font-medium">Group Name</label>
+              <Input
+                id="name"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                placeholder="e.g., The Smiths, Sunday Dinners"
+                autoFocus
+              />
+            </div>
+            <Button type="submit" disabled={isCreatingGroup || !identity} className="w-full">
+              {isCreatingGroup ? "Creating..." : !identity ? "Setting up encryption..." : "Create Group"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDmDialogOpen} onOpenChange={setIsDmDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl">Start a Conversation</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleStartConversation} className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <label htmlFor="dm-email" className="text-sm font-medium">Their Email</label>
+              <Input
+                id="dm-email"
+                type="email"
+                value={dmEmail}
+                onChange={(e) => setDmEmail(e.target.value)}
+                placeholder="mom@example.com"
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">They must have created an account first.</p>
+            </div>
+            <Button type="submit" disabled={isStartingDm || !identity} className="w-full">
+              {isStartingDm ? "Starting..." : !identity ? "Setting up encryption..." : "Start Conversation"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
