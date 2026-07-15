@@ -12,3 +12,5 @@ export * from "./generated/types";
 // explicit line here naming the conflicting export.
 export { ListMessagesParams } from "./generated/api";
 export { ListDmMessagesParams } from "./generated/api";
+export * from './generated/api';
+export * from './generated/types';
