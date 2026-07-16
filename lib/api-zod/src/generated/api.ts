@@ -100,7 +100,9 @@ export const ListGroupsResponseItem = zod.object({
   "createdAt": zod.string(),
   "memberCount": zod.number(),
   "lastMessageAt": zod.string().nullish(),
-  "lastMessagePreview": zod.string().nullish()
+  "lastMessagePreview": zod.string().nullish(),
+  "myLastReadAt": zod.string().nullish(),
+  "unreadCount": zod.number().describe('Messages from other members created after myLastReadAt.')
 })
 export const ListGroupsResponse = zod.array(ListGroupsResponseItem)
 
@@ -122,7 +124,9 @@ export const CreateGroupResponse = zod.object({
   "createdAt": zod.string(),
   "memberCount": zod.number(),
   "lastMessageAt": zod.string().nullish(),
-  "lastMessagePreview": zod.string().nullish()
+  "lastMessagePreview": zod.string().nullish(),
+  "myLastReadAt": zod.string().nullish(),
+  "unreadCount": zod.number().describe('Messages from other members created after myLastReadAt.')
 })
 
 
@@ -146,7 +150,8 @@ export const GetGroupResponse = zod.object({
   "publicKey": zod.string().nullish(),
   "hasEncryptionKey": zod.boolean(),
   "role": zod.string(),
-  "joinedAt": zod.string()
+  "joinedAt": zod.string(),
+  "lastReadAt": zod.string().nullable().describe('Last time this member marked the group as read. Used by other members to compute a \"Seen\" receipt on their own last message.\n')
 }))
 })
 
@@ -181,7 +186,8 @@ export const AddGroupMemberResponse = zod.object({
   "publicKey": zod.string().nullish(),
   "hasEncryptionKey": zod.boolean(),
   "role": zod.string(),
-  "joinedAt": zod.string()
+  "joinedAt": zod.string(),
+  "lastReadAt": zod.string().nullable().describe('Last time this member marked the group as read. Used by other members to compute a \"Seen\" receipt on their own last message.\n')
 })
 
 
@@ -218,6 +224,19 @@ export const SetGroupKeyBody = zod.object({
 export const SetGroupKeyResponse = zod.object({
   "groupId": zod.string(),
   "wrappedKey": zod.string().nullable()
+})
+
+
+/**
+ * Sets the current user's last-read timestamp for this group to now. Powers unread badges (client compares each message's createdAt against this timestamp) and "Seen" receipts (the sender compares their last message's createdAt against every other member's last-read timestamp). Broadcasts a WS "read" event so anyone currently viewing the group updates seen-status live.
+ * @summary Mark a group as read up to now, for the current user
+ */
+export const MarkGroupReadParams = zod.object({
+  "groupId": zod.coerce.string()
+})
+
+export const MarkGroupReadResponse = zod.object({
+  "lastReadAt": zod.string()
 })
 
 
@@ -386,7 +405,10 @@ export const ListDmThreadsResponseItem = zod.object({
   "otherUserHasEncryptionKey": zod.boolean(),
   "createdAt": zod.string(),
   "lastMessageAt": zod.string().nullish(),
-  "lastMessagePreview": zod.string().nullish()
+  "lastMessagePreview": zod.string().nullish(),
+  "myLastReadAt": zod.string().nullish(),
+  "otherUserLastReadAt": zod.string().nullish().describe('Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n'),
+  "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.')
 })
 export const ListDmThreadsResponse = zod.array(ListDmThreadsResponseItem)
 
@@ -408,7 +430,10 @@ export const CreateDmThreadResponse = zod.object({
   "otherUserHasEncryptionKey": zod.boolean(),
   "createdAt": zod.string(),
   "lastMessageAt": zod.string().nullish(),
-  "lastMessagePreview": zod.string().nullish()
+  "lastMessagePreview": zod.string().nullish(),
+  "myLastReadAt": zod.string().nullish(),
+  "otherUserLastReadAt": zod.string().nullish().describe('Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n'),
+  "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.')
 })
 
 
@@ -429,7 +454,10 @@ export const GetDmThreadResponse = zod.object({
   "otherUserHasEncryptionKey": zod.boolean(),
   "createdAt": zod.string(),
   "lastMessageAt": zod.string().nullish(),
-  "lastMessagePreview": zod.string().nullish()
+  "lastMessagePreview": zod.string().nullish(),
+  "myLastReadAt": zod.string().nullish(),
+  "otherUserLastReadAt": zod.string().nullish().describe('Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n'),
+  "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.')
 })
 
 
@@ -466,6 +494,19 @@ export const SetDmKeyBody = zod.object({
 export const SetDmKeyResponse = zod.object({
   "threadId": zod.string(),
   "wrappedKey": zod.string().nullable()
+})
+
+
+/**
+ * Sets the current user's last-read timestamp for this thread to now. Powers unread badges (client compares each message's createdAt against this timestamp) and the "Seen" receipt (the sender compares their last message's createdAt against the other participant's last-read timestamp). Broadcasts a WS "read" event so the other participant, if currently viewing the thread, updates seen-status live.
+ * @summary Mark a DM thread as read up to now, for the current user
+ */
+export const MarkDmThreadReadParams = zod.object({
+  "threadId": zod.coerce.string()
+})
+
+export const MarkDmThreadReadResponse = zod.object({
+  "lastReadAt": zod.string()
 })
 
 

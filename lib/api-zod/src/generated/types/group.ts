@@ -16,4 +16,8 @@ export interface Group {
   lastMessageAt?: string | null;
   /** @nullable */
   lastMessagePreview?: string | null;
+  /** @nullable */
+  myLastReadAt?: string | null;
+  /** Messages from other members created after myLastReadAt. */
+  unreadCount: number;
 }

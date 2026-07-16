@@ -33,6 +33,7 @@ export * from './messageInput';
 export * from './messageInputType';
 export * from './messageType';
 export * from './publicKeyInput';
+export * from './readReceipt';
 export * from './searchUserByEmailParams';
 export * from './searchUserResult';
 export * from './updateMyProfileInput';

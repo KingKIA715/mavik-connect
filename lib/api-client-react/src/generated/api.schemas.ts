@@ -5,6 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.2.0
  */
+export interface ReadReceipt {
+  lastReadAt: string;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -40,6 +44,10 @@ export interface Group {
   lastMessageAt?: string | null;
   /** @nullable */
   lastMessagePreview?: string | null;
+  /** @nullable */
+  myLastReadAt?: string | null;
+  /** Messages from other members created after myLastReadAt. */
+  unreadCount: number;
 }
 
 export interface GroupInput {
@@ -58,6 +66,11 @@ export interface GroupMember {
   hasEncryptionKey: boolean;
   role: string;
   joinedAt: string;
+  /**
+     * Last time this member marked the group as read. Used by other members to compute a "Seen" receipt on their own last message.
+     * @nullable
+     */
+  lastReadAt: string | null;
 }
 
 export interface GroupKeyResponse {
@@ -177,6 +190,15 @@ export interface DmThread {
   lastMessageAt?: string | null;
   /** @nullable */
   lastMessagePreview?: string | null;
+  /** @nullable */
+  myLastReadAt?: string | null;
+  /**
+     * Used by the current user to compute a "Seen" receipt on their own last message in this thread.
+     * @nullable
+     */
+  otherUserLastReadAt?: string | null;
+  /** Messages from the other participant created after myLastReadAt. */
+  unreadCount: number;
 }
 
 export type DmMessageType = typeof DmMessageType[keyof typeof DmMessageType];
