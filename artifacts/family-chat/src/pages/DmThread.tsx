@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Send, Lock, ShieldAlert, Paperclip, Download, FileText, Phone, Video, MoreVertical, Pencil, Trash2, Check, CheckCheck } from "lucide-react";
+import { ArrowLeft, Send, Lock, ShieldAlert, Paperclip, Download, FileText, Phone, Video, MoreVertical, Pencil, Trash2, Check, CheckCheck, Search, X } from "lucide-react";
 import { format } from "date-fns";
 import {
   useEncryption,
@@ -72,6 +72,21 @@ export default function DmThread() {
   const [editDraft, setEditDraft] = useState("");
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [isDeleteThreadConfirmOpen, setIsDeleteThreadConfirmOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Messages are end-to-end encrypted — the server only ever sees
+  // ciphertext, so search has to run client-side over what's already been
+  // decrypted in this browser, not as a server-side query.
+  const matchingMessageIds = useMemo(() => {
+    if (!searchQuery.trim() || !messages) return null;
+    const q = searchQuery.trim().toLowerCase();
+    return new Set(
+      messages
+        .filter((m) => (decrypted[m.id] ?? "").toLowerCase().includes(q))
+        .map((m) => m.id),
+    );
+  }, [messages, decrypted, searchQuery]);
   // Read receipts: the other participant's last-read timestamp, seeded from
   // the thread fetch and kept live via the "read" WS event below so a
   // "Seen" checkmark appears on my last message without needing a reload.
@@ -358,6 +373,19 @@ export default function DmThread() {
             </Button>
           </Link>
 
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-full text-muted-foreground"
+            aria-label={isSearchOpen ? "Close search" : "Search messages"}
+            onClick={() => {
+              setIsSearchOpen((open) => !open);
+              if (isSearchOpen) setSearchQuery("");
+            }}
+          >
+            {isSearchOpen ? <X className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+          </Button>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="icon" variant="ghost" className="rounded-full text-muted-foreground" aria-label="Conversation actions">
@@ -376,12 +404,36 @@ export default function DmThread() {
         </div>
       </header>
 
+      {isSearchOpen && (
+        <div className="flex-none border-b border-border bg-white px-3 sm:px-6 py-2.5">
+          <div className="max-w-3xl mx-auto flex items-center gap-2">
+            <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <Input
+              autoFocus
+              placeholder="Search this conversation..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-9 border-none shadow-none focus-visible:ring-0 px-0"
+            />
+            {searchQuery && matchingMessageIds && (
+              <span className="text-xs text-muted-foreground flex-shrink-0">
+                {matchingMessageIds.size} match{matchingMessageIds.size === 1 ? "" : "es"}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6" ref={scrollRef}>
         <div className="max-w-3xl mx-auto space-y-6">
           {messagesLoading ? null : messages?.length === 0 ? (
             <div className="text-center py-20 text-muted-foreground italic font-serif">
               It's quiet here. Send the first message to {thread.otherUserName}!
+            </div>
+          ) : matchingMessageIds && matchingMessageIds.size === 0 ? (
+            <div className="text-center py-20 text-muted-foreground">
+              No messages match "{searchQuery}".
             </div>
           ) : (
             messages?.map((msg, idx) => {
@@ -392,6 +444,8 @@ export default function DmThread() {
                 isLastMine &&
                 !!otherUserLastReadAt &&
                 new Date(otherUserLastReadAt) >= new Date(msg.createdAt);
+
+              if (matchingMessageIds && !matchingMessageIds.has(msg.id)) return null;
 
               return (
                 <div key={msg.id} className={`flex gap-2 group ${isMe ? 'justify-end' : 'justify-start'}`}>

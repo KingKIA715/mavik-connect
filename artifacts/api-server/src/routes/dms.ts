@@ -24,6 +24,7 @@ import {
   MarkDmThreadReadResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
+import { messageSendRateLimit } from "../middlewares/rateLimit";
 import {
   parseThreadId,
   isThreadParticipant,
@@ -500,7 +501,7 @@ router.get("/dms/:threadId/messages", async (req, res): Promise<void> => {
   );
 });
 
-router.post("/dms/:threadId/messages", async (req, res): Promise<void> => {
+router.post("/dms/:threadId/messages", messageSendRateLimit, async (req, res): Promise<void> => {
   const threadId = parseThreadId(req.params.threadId);
   if (threadId === null) {
     res.status(404).json({ error: "Thread not found" });

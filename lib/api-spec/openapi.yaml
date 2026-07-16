@@ -309,7 +309,10 @@ paths:
     delete:
       operationId: removeGroupMember
       tags: [groups]
-      summary: Remove a member from a group
+      summary: Remove a member from a group, or leave it yourself
+      description: >
+        Any member can remove themselves (leave the group). Removing
+        someone else requires being the group's creator.
       parameters:
         - name: groupId
           in: path
@@ -324,6 +327,10 @@ paths:
       responses:
         "204":
           description: Removed
+        "403":
+          description: Only the group's creator can remove other members
+        "404":
+          description: Not found
 
   /groups/{groupId}/messages:
     get:
@@ -386,6 +393,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Message"
+        "429":
+          description: Rate limited — sending messages too quickly
 
   /groups/{groupId}/messages/{messageId}:
     patch:
@@ -677,6 +686,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DmMessage"
+        "429":
+          description: Rate limited — sending messages too quickly
 
   /dms/{threadId}/messages/{messageId}:
     patch:

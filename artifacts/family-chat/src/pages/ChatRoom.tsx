@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
@@ -8,6 +8,7 @@ import {
   useEditMessage,
   useDeleteMessage,
   useAddGroupMember,
+  useRemoveGroupMember,
   useDeleteGroup,
   useGetMyProfile,
   useSetGroupKey,
@@ -35,7 +36,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Video, Phone, Send, UserPlus, Users, Lock, ShieldAlert, Crown, Paperclip, Download, FileText, Check, CheckCheck } from "lucide-react";
+import { Video, Phone, Send, UserPlus, Users, Lock, ShieldAlert, Crown, Paperclip, Download, FileText, Check, CheckCheck, Search, X } from "lucide-react";
 import { format } from "date-fns";
 import { useEncryption, useMyGroupKey, shareGroupKeyWithMember } from "@/hooks/use-encryption";
 import { encryptMessage, decryptMessage, encryptFile, decryptFile, isEncryptedPayload } from "@/lib/crypto";
@@ -53,6 +54,7 @@ export default function ChatRoom() {
   const editMessage = useEditMessage();
   const deleteMessage = useDeleteMessage();
   const addMember = useAddGroupMember();
+  const removeMember = useRemoveGroupMember();
   const deleteGroup = useDeleteGroup();
   const setGroupKey = useSetGroupKey();
   const markGroupRead = useMarkGroupRead();
@@ -72,11 +74,27 @@ export default function ChatRoom() {
   const [editDraft, setEditDraft] = useState("");
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [isDeleteGroupConfirmOpen, setIsDeleteGroupConfirmOpen] = useState(false);
+  const [isLeaveGroupConfirmOpen, setIsLeaveGroupConfirmOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Messages are end-to-end encrypted — the server only ever sees
+  // ciphertext, so search has to run client-side over what's already been
+  // decrypted in this browser, not as a server-side query.
+  const matchingMessageIds = useMemo(() => {
+    if (!searchQuery.trim() || !messages) return null;
+    const q = searchQuery.trim().toLowerCase();
+    return new Set(
+      messages
+        .filter((m) => (decrypted[m.id] ?? "").toLowerCase().includes(q))
+        .map((m) => m.id),
+    );
+  }, [messages, decrypted, searchQuery]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { isConnected, onMessageRef, onMessageUpdateRef, onGroupDeletedRef, onReadRef, onGroupKeyReadyRef } = useWebSocket(groupId);
+  const { isConnected, onMessageRef, onMessageUpdateRef, onGroupDeletedRef, onReadRef, onGroupKeyReadyRef, onMemberRemovedRef } = useWebSocket(groupId);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -138,6 +156,36 @@ export default function ChatRoom() {
   useEffect(() => {
     onGroupKeyReadyRef.current = () => retryGroupKey();
   }, [onGroupKeyReadyRef, retryGroupKey]);
+
+  // Someone left, or was removed by the creator: if it was me, leave the
+  // page; otherwise just drop them from the cached member list live.
+  useEffect(() => {
+    onMemberRemovedRef.current = (userId) => {
+      if (userId === profile?.id) {
+        queryClient.invalidateQueries({ queryKey: getListGroupsQueryKey() });
+        toast({ title: "Removed from group", description: "You're no longer a member of this group." });
+        navigate("/app");
+        return;
+      }
+      queryClient.setQueryData(getGetGroupQueryKey(groupId!), (old: any) => {
+        if (!old) return old;
+        return { ...old, members: old.members.filter((m: any) => m.userId !== userId) };
+      });
+    };
+  }, [groupId, profile?.id, queryClient, onMemberRemovedRef, toast, navigate]);
+
+  const handleConfirmLeaveGroup = async () => {
+    if (!groupId || !profile) return;
+    try {
+      await removeMember.mutateAsync({ groupId, userId: profile.id });
+      queryClient.invalidateQueries({ queryKey: getListGroupsQueryKey() });
+      navigate("/app");
+    } catch {
+      toast({ variant: "destructive", title: "Couldn't leave group", description: "Please try again." });
+    } finally {
+      setIsLeaveGroupConfirmOpen(false);
+    }
+  };
 
   // Mark the group read whenever we're looking at it and messages are
   // loaded. Also powers the sidebar's unread badge (same lastReadAt,
@@ -414,7 +462,7 @@ export default function ChatRoom() {
                 <UserPlus className="w-4 h-4 mr-2" />
                 Invite Someone New
               </Button>
-              {group.createdBy === profile?.id && (
+              {group.createdBy === profile?.id ? (
                 <Button
                   variant="outline"
                   className="w-full mt-2 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
@@ -425,6 +473,18 @@ export default function ChatRoom() {
                 >
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete Group
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="w-full mt-2 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => {
+                    setIsMembersOpen(false);
+                    setIsLeaveGroupConfirmOpen(true);
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Leave Group
                 </Button>
               )}
             </DialogContent>
@@ -444,6 +504,19 @@ export default function ChatRoom() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-full text-muted-foreground"
+            aria-label={isSearchOpen ? "Close search" : "Search messages"}
+            onClick={() => {
+              setIsSearchOpen((open) => !open);
+              if (isSearchOpen) setSearchQuery("");
+            }}
+          >
+            {isSearchOpen ? <X className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+          </Button>
+
           <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
             <DialogTrigger asChild>
               <Button variant="ghost" size="sm" className="rounded-full gap-1.5 text-muted-foreground px-2.5 sm:px-3">
@@ -489,12 +562,36 @@ export default function ChatRoom() {
         </div>
       </header>
 
+      {isSearchOpen && (
+        <div className="flex-none border-b border-border bg-white px-3 sm:px-6 py-2.5">
+          <div className="max-w-3xl mx-auto flex items-center gap-2">
+            <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <Input
+              autoFocus
+              placeholder="Search this conversation..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-9 border-none shadow-none focus-visible:ring-0 px-0"
+            />
+            {searchQuery && matchingMessageIds && (
+              <span className="text-xs text-muted-foreground flex-shrink-0">
+                {matchingMessageIds.size} match{matchingMessageIds.size === 1 ? "" : "es"}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6" ref={scrollRef}>
         <div className="max-w-3xl mx-auto space-y-6">
           {messages?.length === 0 ? (
             <div className="text-center py-20 text-muted-foreground italic font-serif">
               It's quiet here. Send the first message to {group.name}!
+            </div>
+          ) : matchingMessageIds && matchingMessageIds.size === 0 ? (
+            <div className="text-center py-20 text-muted-foreground">
+              No messages match "{searchQuery}".
             </div>
           ) : (
             messages?.map((msg, idx) => {
@@ -508,6 +605,8 @@ export default function ChatRoom() {
                 otherMembers.every(
                   (m) => m.lastReadAt && new Date(m.lastReadAt) >= new Date(msg.createdAt),
                 );
+
+              if (matchingMessageIds && !matchingMessageIds.has(msg.id)) return null;
               
               return (
                 <div key={msg.id} className={`flex gap-2 group ${isMe ? 'justify-end' : 'justify-start'}`}>
@@ -681,6 +780,23 @@ export default function ChatRoom() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDeleteGroup} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete Group
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isLeaveGroupConfirmOpen} onOpenChange={setIsLeaveGroupConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave "{group.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You'll stop receiving messages from this group. Another member can add you back later if you change your mind.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmLeaveGroup} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Leave Group
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

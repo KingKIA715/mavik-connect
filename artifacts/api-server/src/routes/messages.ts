@@ -10,6 +10,7 @@ import {
   DeleteMessageResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
+import { messageSendRateLimit } from "../middlewares/rateLimit";
 import { parseGroupId, isGroupMember } from "../lib/groupAccess";
 import { broadcastToGroup } from "../ws/hub";
 import { toIso, toIsoOrNull } from "../lib/serialize";
@@ -92,6 +93,7 @@ router.get(
 
 router.post(
   "/groups/:groupId/messages",
+  messageSendRateLimit,
   async (req, res): Promise<void> => {
     const groupId = parseGroupId(req.params.groupId);
     if (groupId === null) {

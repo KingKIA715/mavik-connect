@@ -466,6 +466,26 @@ router.delete(
       return;
     }
 
+    // Anyone can remove themselves (leave). Removing someone else requires
+    // being the group's creator — previously any member could remove any
+    // other member, which was an access-control gap.
+    if (targetUserId !== requesterId) {
+      const [group] = await db
+        .select({ createdBy: groupsTable.createdBy })
+        .from(groupsTable)
+        .where(eq(groupsTable.id, groupId));
+      if (!group) {
+        res.status(404).json({ error: "Group not found" });
+        return;
+      }
+      if (group.createdBy !== requesterId) {
+        res.status(403).json({
+          error: "Only the group's creator can remove other members",
+        });
+        return;
+      }
+    }
+
     await db
       .delete(groupMembersTable)
       .where(
@@ -474,6 +494,11 @@ router.delete(
           eq(groupMembersTable.userId, targetUserId),
         ),
       );
+
+    // Let anyone still connected know live: other members should drop this
+    // person from their member list, and the removed person themselves (if
+    // it wasn't a self-initiated leave) should be kicked out of the chat.
+    broadcastToGroup(groupId, { type: "member-removed", userId: targetUserId });
 
     res.sendStatus(204);
   },
