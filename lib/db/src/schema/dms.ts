@@ -24,6 +24,12 @@ export const dmThreadsTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // Read-receipt tracking: the last time each side marked this thread as
+    // read. Two columns (rather than a join table) mirror the existing
+    // userA/userB convention above, since a DM thread only ever has exactly
+    // 2 participants. Null means "never opened this thread".
+    userALastReadAt: timestamp("user_a_last_read_at", { withTimezone: true }),
+    userBLastReadAt: timestamp("user_b_last_read_at", { withTimezone: true }),
   },
   (table) => [unique().on(table.userAId, table.userBId)],
 );

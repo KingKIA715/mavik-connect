@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, ne, sql } from "drizzle-orm";
 import {
   db,
   groupKeysTable,
@@ -18,10 +18,11 @@ import {
   ListGroupsResponseItem,
   SetGroupKeyBody,
   SetGroupKeyResponse,
+  MarkGroupReadResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { parseGroupId, isGroupMember } from "../lib/groupAccess";
-import { broadcastToGroup } from "../ws/hub";
+import { broadcastToGroup, sendToUser } from "../ws/hub";
 import { toIso, toIsoOrNull } from "../lib/serialize";
 
 const router: IRouter = Router();
@@ -82,6 +83,45 @@ router.get("/groups", async (req, res): Promise<void> => {
     }
   }
 
+  const myMemberships = await db
+    .select({
+      groupId: groupMembersTable.groupId,
+      lastReadAt: groupMembersTable.lastReadAt,
+    })
+    .from(groupMembersTable)
+    .where(
+      and(
+        inArray(groupMembersTable.groupId, groupIds),
+        eq(groupMembersTable.userId, userId),
+      ),
+    );
+  const myLastReadByGroup = new Map(
+    myMemberships.map((m) => [m.groupId, m.lastReadAt]),
+  );
+
+  // Unread badge count per group: messages from anyone else, created after
+  // my last-read timestamp for that group (never-read groups count
+  // everything not sent by me).
+  const unreadCounts = await Promise.all(
+    groupIds.map(async (groupId) => {
+      const myLastReadAt = myLastReadByGroup.get(groupId) ?? null;
+      const rows = await db
+        .select({ id: messagesTable.id })
+        .from(messagesTable)
+        .where(
+          and(
+            eq(messagesTable.groupId, groupId),
+            ne(messagesTable.senderId, userId),
+            myLastReadAt ? gt(messagesTable.createdAt, myLastReadAt) : undefined,
+          ),
+        );
+      return { groupId, count: rows.length };
+    }),
+  );
+  const unreadCountByGroup = new Map(
+    unreadCounts.map((u) => [u.groupId, u.count]),
+  );
+
   const result = groups.map((group) => {
     const lastMessage = lastMessageByGroup.get(group.id);
     return {
@@ -92,6 +132,8 @@ router.get("/groups", async (req, res): Promise<void> => {
       memberCount: memberCountByGroup.get(group.id) ?? 0,
       lastMessageAt: toIsoOrNull(lastMessage?.createdAt),
       lastMessagePreview: lastMessage?.content ?? null,
+      myLastReadAt: toIsoOrNull(myLastReadByGroup.get(group.id)),
+      unreadCount: unreadCountByGroup.get(group.id) ?? 0,
     };
   });
 
@@ -129,6 +171,8 @@ router.post("/groups", async (req, res): Promise<void> => {
       memberCount: 1,
       lastMessageAt: null,
       lastMessagePreview: null,
+      myLastReadAt: null,
+      unreadCount: 0,
     }),
   );
 });
@@ -165,6 +209,7 @@ router.get("/groups/:groupId", async (req, res): Promise<void> => {
       publicKey: usersTable.publicKey,
       role: groupMembersTable.role,
       joinedAt: groupMembersTable.joinedAt,
+      lastReadAt: groupMembersTable.lastReadAt,
     })
     .from(groupMembersTable)
     .innerJoin(usersTable, eq(groupMembersTable.userId, usersTable.id))
@@ -185,6 +230,7 @@ router.get("/groups/:groupId", async (req, res): Promise<void> => {
       members: members.map((m) => ({
         ...m,
         joinedAt: toIso(m.joinedAt),
+        lastReadAt: toIsoOrNull(m.lastReadAt),
         hasEncryptionKey: keyHolderSet.has(m.userId),
       })),
     }),
@@ -281,6 +327,7 @@ router.post("/groups/:groupId/members", async (req, res): Promise<void> => {
       hasEncryptionKey: false,
       role: membership?.role ?? "member",
       joinedAt: toIso(membership?.joinedAt ?? new Date()),
+      lastReadAt: null,
     }),
   );
 });
@@ -315,6 +362,38 @@ router.get("/groups/:groupId/key", async (req, res): Promise<void> => {
       wrappedKey: key?.wrappedKey ?? null,
     }),
   );
+});
+
+router.put("/groups/:groupId/read", async (req, res): Promise<void> => {
+  const groupId = parseGroupId(req.params.groupId);
+  if (groupId === null) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const userId = req.userId!;
+  const member = await isGroupMember(groupId, userId);
+  if (!member) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const now = new Date();
+  await db
+    .update(groupMembersTable)
+    .set({ lastReadAt: now })
+    .where(
+      and(
+        eq(groupMembersTable.groupId, groupId),
+        eq(groupMembersTable.userId, userId),
+      ),
+    );
+
+  // Let anyone currently viewing the group know live, so their "Seen"
+  // receipt updates without a reload.
+  broadcastToGroup(groupId, { type: "read", userId, lastReadAt: toIso(now) });
+
+  res.json(MarkGroupReadResponse.parse({ lastReadAt: toIso(now) }));
 });
 
 router.post("/groups/:groupId/keys", async (req, res): Promise<void> => {
@@ -354,6 +433,11 @@ router.post("/groups/:groupId/keys", async (req, res): Promise<void> => {
       target: [groupKeysTable.groupId, groupKeysTable.userId],
       set: { wrappedKey: parsed.data.wrappedKey },
     });
+
+  // Tell the recipient's client (if connected to this group) that a key is
+  // now available, so it can refetch instead of staying stuck on "missing"
+  // until they happen to reload the page.
+  sendToUser(groupId, parsed.data.userId, { type: "group-key-ready" });
 
   res.status(201).json(
     SetGroupKeyResponse.parse({

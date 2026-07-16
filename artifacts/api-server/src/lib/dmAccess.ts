@@ -47,6 +47,36 @@ export async function getOtherParticipant(
 }
 
 /**
+ * A DM thread stores one last-read timestamp per side (userA/userB) rather
+ * than a per-user join table, since a thread only ever has exactly 2
+ * participants (see dm_threads schema). This picks out "mine" vs "theirs"
+ * for whichever side `userId` is on.
+ */
+export function getReadTimestamps(
+  thread: {
+    userAId: string;
+    userBId: string;
+    userALastReadAt: Date | null;
+    userBLastReadAt: Date | null;
+  },
+  userId: string,
+): { myLastReadAt: Date | null; otherLastReadAt: Date | null } {
+  const isUserA = thread.userAId === userId;
+  return {
+    myLastReadAt: isUserA ? thread.userALastReadAt : thread.userBLastReadAt,
+    otherLastReadAt: isUserA ? thread.userBLastReadAt : thread.userALastReadAt,
+  };
+}
+
+/** Which dm_threads column to update when `userId` marks a thread read. */
+export function myLastReadColumn(
+  thread: { userAId: string; userBId: string },
+  userId: string,
+): "userALastReadAt" | "userBLastReadAt" {
+  return thread.userAId === userId ? "userALastReadAt" : "userBLastReadAt";
+}
+
+/**
  * Finds the existing DM thread between two users, or creates one. Threads
  * are stored with userAId/userBId in canonical (sorted) order so each pair
  * of users maps to exactly one thread, regardless of who initiates.

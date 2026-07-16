@@ -107,7 +107,7 @@ export function useMyGroupKey(groupId: string | undefined, privateKey: CryptoKey
   );
   const [status, setStatus] = useState<GroupKeyStatus>(groupKey ? "ready" : "loading");
 
-  const { data, isFetched } = useGetMyGroupKey(groupId ?? "", {
+  const { data, isFetched, refetch } = useGetMyGroupKey(groupId ?? "", {
     query: {
       enabled: !!groupId && !!privateKey && !groupKey,
       queryKey: getGetMyGroupKeyQueryKey(groupId ?? ""),
@@ -138,7 +138,15 @@ export function useMyGroupKey(groupId: string | undefined, privateKey: CryptoKey
       .catch(() => setStatus("missing"));
   }, [groupId, privateKey, data, isFetched]);
 
-  return { groupKey, status };
+  // Called when a "group-key-ready" WS event tells us a key was just shared
+  // for this group — re-fetches even though react-query already considers
+  // the (previously "no key yet") query settled.
+  const retry = () => {
+    setStatus("loading");
+    void refetch();
+  };
+
+  return { groupKey, status, retry };
 }
 
 // --- DM thread key exchange ---
@@ -199,7 +207,7 @@ export function useMyDmKey(threadId: string | undefined, privateKey: CryptoKey |
   );
   const [status, setStatus] = useState<GroupKeyStatus>(dmKey ? "ready" : "loading");
 
-  const { data, isFetched } = useGetMyDmKey(threadId ?? "", {
+  const { data, isFetched, refetch } = useGetMyDmKey(threadId ?? "", {
     query: {
       enabled: !!threadId && !!privateKey && !dmKey,
       queryKey: getGetMyDmKeyQueryKey(threadId ?? ""),
@@ -230,5 +238,14 @@ export function useMyDmKey(threadId: string | undefined, privateKey: CryptoKey |
       .catch(() => setStatus("missing"));
   }, [threadId, privateKey, data, isFetched]);
 
-  return { dmKey, status };
+  // Called when a "dm-key-ready" WS event tells us a key was just shared for
+  // this thread — re-fetches even though react-query already considers the
+  // (previously "no key yet") query settled. This is what closes the loop on
+  // the "new browser -> key rotation -> stuck on missing forever" bug.
+  const retry = () => {
+    setStatus("loading");
+    void refetch();
+  };
+
+  return { dmKey, status, retry };
 }

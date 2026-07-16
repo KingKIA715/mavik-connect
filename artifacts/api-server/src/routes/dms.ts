@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, or } from "drizzle-orm";
 import {
   db,
   dmKeysTable,
@@ -21,14 +21,17 @@ import {
   DeleteDmMessageResponse,
   SetDmKeyBody,
   SetDmKeyResponse,
+  MarkDmThreadReadResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import {
   parseThreadId,
   isThreadParticipant,
   findOrCreateThread,
+  getReadTimestamps,
+  myLastReadColumn,
 } from "../lib/dmAccess";
-import { broadcastToThread } from "../ws/hub";
+import { broadcastToThread, sendToUserInThread } from "../ws/hub";
 import { toIso, toIsoOrNull } from "../lib/serialize";
 
 const router: IRouter = Router();
@@ -111,10 +114,35 @@ router.get("/dms", async (req, res): Promise<void> => {
     keyHolders.map((k) => `${k.threadId}:${k.userId}`),
   );
 
+  // Unread badge count per thread: messages from the other participant
+  // created after my last-read timestamp for that thread (never-read
+  // threads count everything from them).
+  const unreadCounts = await Promise.all(
+    threads.map(async (thread) => {
+      const otherUserId = thread.userAId === userId ? thread.userBId : thread.userAId;
+      const { myLastReadAt } = getReadTimestamps(thread, userId);
+      const rows = await db
+        .select({ id: dmMessagesTable.id })
+        .from(dmMessagesTable)
+        .where(
+          and(
+            eq(dmMessagesTable.threadId, thread.id),
+            eq(dmMessagesTable.senderId, otherUserId),
+            myLastReadAt ? gt(dmMessagesTable.createdAt, myLastReadAt) : undefined,
+          ),
+        );
+      return { threadId: thread.id, count: rows.length };
+    }),
+  );
+  const unreadCountByThread = new Map(
+    unreadCounts.map((u) => [u.threadId, u.count]),
+  );
+
   const result = threads.map((thread) => {
     const otherUserId = thread.userAId === userId ? thread.userBId : thread.userAId;
     const otherUser = otherUserById.get(otherUserId);
     const lastMessage = lastMessageByThread.get(thread.id);
+    const { myLastReadAt, otherLastReadAt } = getReadTimestamps(thread, userId);
     return {
       id: String(thread.id),
       otherUserId,
@@ -126,6 +154,9 @@ router.get("/dms", async (req, res): Promise<void> => {
       createdAt: toIso(thread.createdAt),
       lastMessageAt: toIsoOrNull(lastMessage?.createdAt),
       lastMessagePreview: lastMessage?.content ?? null,
+      myLastReadAt: toIsoOrNull(myLastReadAt),
+      otherUserLastReadAt: toIsoOrNull(otherLastReadAt),
+      unreadCount: unreadCountByThread.get(thread.id) ?? 0,
     };
   });
 
@@ -189,6 +220,11 @@ router.post("/dms", async (req, res): Promise<void> => {
       createdAt: toIso(thread.createdAt),
       lastMessageAt: toIsoOrNull(lastMessage?.createdAt),
       lastMessagePreview: lastMessage?.content ?? null,
+      myLastReadAt: toIsoOrNull(getReadTimestamps(thread, userId).myLastReadAt),
+      otherUserLastReadAt: toIsoOrNull(
+        getReadTimestamps(thread, userId).otherLastReadAt,
+      ),
+      unreadCount: 0,
     }),
   );
 });
@@ -239,6 +275,18 @@ router.get("/dms/:threadId", async (req, res): Promise<void> => {
     .orderBy(desc(dmMessagesTable.createdAt))
     .limit(1);
 
+  const { myLastReadAt, otherLastReadAt } = getReadTimestamps(thread, userId);
+  const unreadRows = await db
+    .select({ id: dmMessagesTable.id })
+    .from(dmMessagesTable)
+    .where(
+      and(
+        eq(dmMessagesTable.threadId, threadId),
+        eq(dmMessagesTable.senderId, otherUserId),
+        myLastReadAt ? gt(dmMessagesTable.createdAt, myLastReadAt) : undefined,
+      ),
+    );
+
   res.json(
     GetDmThreadResponse.parse({
       id: String(thread.id),
@@ -251,8 +299,42 @@ router.get("/dms/:threadId", async (req, res): Promise<void> => {
       createdAt: toIso(thread.createdAt),
       lastMessageAt: toIsoOrNull(lastMessage?.createdAt),
       lastMessagePreview: lastMessage?.content ?? null,
+      myLastReadAt: toIsoOrNull(myLastReadAt),
+      otherUserLastReadAt: toIsoOrNull(otherLastReadAt),
+      unreadCount: unreadRows.length,
     }),
   );
+});
+
+router.put("/dms/:threadId/read", async (req, res): Promise<void> => {
+  const threadId = parseThreadId(req.params.threadId);
+  if (threadId === null) {
+    res.status(404).json({ error: "Thread not found" });
+    return;
+  }
+
+  const userId = req.userId!;
+  const [thread] = await db
+    .select()
+    .from(dmThreadsTable)
+    .where(eq(dmThreadsTable.id, threadId));
+  if (!thread || (thread.userAId !== userId && thread.userBId !== userId)) {
+    res.status(404).json({ error: "Thread not found" });
+    return;
+  }
+
+  const now = new Date();
+  const column = myLastReadColumn(thread, userId);
+  await db
+    .update(dmThreadsTable)
+    .set({ [column]: now })
+    .where(eq(dmThreadsTable.id, threadId));
+
+  // Let the other participant know live, if they're currently viewing this
+  // thread, so their "Seen" receipt updates without a reload.
+  broadcastToThread(threadId, { type: "read", userId, lastReadAt: toIso(now) });
+
+  res.json(MarkDmThreadReadResponse.parse({ lastReadAt: toIso(now) }));
 });
 
 router.get("/dms/:threadId/key", async (req, res): Promise<void> => {
@@ -327,6 +409,12 @@ router.post("/dms/:threadId/keys", async (req, res): Promise<void> => {
       target: [dmKeysTable.threadId, dmKeysTable.userId],
       set: { wrappedKey: parsed.data.wrappedKey },
     });
+
+  // Tell the recipient's client (if connected to this thread) that a key is
+  // now available, so it can refetch instead of staying stuck on "missing"
+  // until they happen to reload the page. See dmAccess/key-rotation notes in
+  // users.ts for why this handshake matters after a public-key rotation.
+  sendToUserInThread(threadId, parsed.data.userId, { type: "dm-key-ready" });
 
   res.status(201).json(
     SetDmKeyResponse.parse({

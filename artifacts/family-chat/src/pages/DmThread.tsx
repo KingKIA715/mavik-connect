@@ -8,9 +8,11 @@ import {
   useEditDmMessage,
   useDeleteDmMessage,
   useSetDmKey,
+  useMarkDmThreadRead,
   useGetMyProfile,
   getListDmMessagesQueryKey,
   getGetDmThreadQueryKey,
+  getListDmThreadsQueryKey,
 } from "@workspace/api-client-react";
 import { useThreadWebSocket } from "@/hooks/use-websocket";
 import { Button } from "@/components/ui/button";
@@ -28,7 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Send, Lock, ShieldAlert, Paperclip, Download, FileText, Phone, Video, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Send, Lock, ShieldAlert, Paperclip, Download, FileText, Phone, Video, MoreVertical, Pencil, Trash2, Check, CheckCheck } from "lucide-react";
 import { format } from "date-fns";
 import {
   useEncryption,
@@ -53,10 +55,11 @@ export default function DmThread() {
   const editDmMessage = useEditDmMessage();
   const deleteDmMessage = useDeleteDmMessage();
   const setDmKey = useSetDmKey();
+  const markThreadRead = useMarkDmThreadRead();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const identity = useEncryption();
-  const { dmKey, status: dmKeyStatus } = useMyDmKey(threadId, identity?.privateKey ?? null);
+  const { dmKey, status: dmKeyStatus, retry: retryDmKey } = useMyDmKey(threadId, identity?.privateKey ?? null);
 
   const [content, setContent] = useState("");
   const [decrypted, setDecrypted] = useState<Record<string, string>>({});
@@ -65,10 +68,18 @@ export default function DmThread() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  // Read receipts: the other participant's last-read timestamp, seeded from
+  // the thread fetch and kept live via the "read" WS event below so a
+  // "Seen" checkmark appears on my last message without needing a reload.
+  const [otherUserLastReadAt, setOtherUserLastReadAt] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { onMessageRef, onMessageUpdateRef } = useThreadWebSocket(threadId);
+  const { onMessageRef, onMessageUpdateRef, onReadRef, onDmKeyReadyRef } = useThreadWebSocket(threadId);
+
+  useEffect(() => {
+    if (thread) setOtherUserLastReadAt(thread.otherUserLastReadAt ?? null);
+  }, [thread?.otherUserLastReadAt]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -94,6 +105,36 @@ export default function DmThread() {
       });
     };
   }, [threadId, queryClient, onMessageUpdateRef]);
+
+  // Live "Seen" updates: when the other participant marks this thread read
+  // (from their own device), update their last-read timestamp here without
+  // needing a reload.
+  useEffect(() => {
+    onReadRef.current = (userId, lastReadAt) => {
+      if (thread && userId === thread.otherUserId) {
+        setOtherUserLastReadAt(lastReadAt);
+      }
+    };
+  }, [thread, onReadRef]);
+
+  // Closes the loop on the "new browser -> key rotation -> send disabled
+  // forever" bug: the server tells us over WS as soon as a key becomes
+  // available, so we re-fetch instead of waiting for a reload.
+  useEffect(() => {
+    onDmKeyReadyRef.current = () => retryDmKey();
+  }, [onDmKeyReadyRef, retryDmKey]);
+
+  // Mark the thread read whenever we're looking at it and messages are
+  // loaded (covers first open and every new incoming message). Also powers
+  // the sidebar's unread badge, which reads the same lastReadAt server-side.
+  useEffect(() => {
+    if (!threadId || !messages || messages.length === 0) return;
+    markThreadRead.mutate(
+      { threadId },
+      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListDmThreadsQueryKey() }) },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId, messages?.length]);
 
   // Decrypt messages as they arrive/load, whenever we have the thread key.
   useEffect(() => {
@@ -303,6 +344,11 @@ export default function DmThread() {
             messages?.map((msg, idx) => {
               const isMe = msg.senderId === profile?.id;
               const showAvatar = !isMe && (idx === 0 || messages[idx - 1].senderId !== msg.senderId);
+              const isLastMine = isMe && !messages.slice(idx + 1).some((m) => m.senderId === profile?.id);
+              const isSeen =
+                isLastMine &&
+                !!otherUserLastReadAt &&
+                new Date(otherUserLastReadAt) >= new Date(msg.createdAt);
 
               return (
                 <div key={msg.id} className={`flex gap-2 group ${isMe ? 'justify-end' : 'justify-start'}`}>
@@ -389,6 +435,15 @@ export default function DmThread() {
                     <span className="text-[10px] text-muted-foreground/60 mt-1 px-1 flex items-center gap-1">
                       {format(new Date(msg.createdAt), "h:mm a")}
                       {msg.editedAt && !msg.deletedAt && <span>(edited)</span>}
+                      {isLastMine && (
+                        isSeen ? (
+                          <span className="flex items-center gap-0.5 text-primary/70">
+                            <CheckCheck className="w-3.5 h-3.5" /> Seen
+                          </span>
+                        ) : (
+                          <Check className="w-3.5 h-3.5" />
+                        )
+                      )}
                     </span>
                   </div>
                 </div>

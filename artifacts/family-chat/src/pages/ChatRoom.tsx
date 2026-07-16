@@ -11,6 +11,7 @@ import {
   useDeleteGroup,
   useGetMyProfile,
   useSetGroupKey,
+  useMarkGroupRead,
   getListMessagesQueryKey,
   getGetGroupQueryKey,
   getListGroupsQueryKey
@@ -34,7 +35,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Video, Phone, Send, UserPlus, Users, Lock, ShieldAlert, Crown, Paperclip, Download, FileText } from "lucide-react";
+import { Video, Phone, Send, UserPlus, Users, Lock, ShieldAlert, Crown, Paperclip, Download, FileText, Check, CheckCheck } from "lucide-react";
 import { format } from "date-fns";
 import { useEncryption, useMyGroupKey, shareGroupKeyWithMember } from "@/hooks/use-encryption";
 import { encryptMessage, decryptMessage, encryptFile, decryptFile, isEncryptedPayload } from "@/lib/crypto";
@@ -54,10 +55,11 @@ export default function ChatRoom() {
   const addMember = useAddGroupMember();
   const deleteGroup = useDeleteGroup();
   const setGroupKey = useSetGroupKey();
+  const markGroupRead = useMarkGroupRead();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const identity = useEncryption();
-  const { groupKey, status: groupKeyStatus } = useMyGroupKey(groupId, identity?.privateKey ?? null);
+  const { groupKey, status: groupKeyStatus, retry: retryGroupKey } = useMyGroupKey(groupId, identity?.privateKey ?? null);
 
   const [content, setContent] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
@@ -74,7 +76,7 @@ export default function ChatRoom() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { isConnected, onMessageRef, onMessageUpdateRef, onGroupDeletedRef } = useWebSocket(groupId);
+  const { isConnected, onMessageRef, onMessageUpdateRef, onGroupDeletedRef, onReadRef, onGroupKeyReadyRef } = useWebSocket(groupId);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -114,6 +116,40 @@ export default function ChatRoom() {
       navigate("/app");
     };
   }, [queryClient, onGroupDeletedRef, toast, navigate]);
+
+  // Live "Seen" updates: patch the affected member's lastReadAt directly in
+  // the cached group data so the checkmark updates without a refetch.
+  useEffect(() => {
+    onReadRef.current = (userId, lastReadAt) => {
+      queryClient.setQueryData(getGetGroupQueryKey(groupId!), (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          members: old.members.map((m: any) =>
+            m.userId === userId ? { ...m, lastReadAt } : m,
+          ),
+        };
+      });
+    };
+  }, [groupId, queryClient, onReadRef]);
+
+  // Closes the loop on the "new browser -> key rotation -> send disabled
+  // forever" bug for groups, same fix as DmThread.tsx.
+  useEffect(() => {
+    onGroupKeyReadyRef.current = () => retryGroupKey();
+  }, [onGroupKeyReadyRef, retryGroupKey]);
+
+  // Mark the group read whenever we're looking at it and messages are
+  // loaded. Also powers the sidebar's unread badge (same lastReadAt,
+  // read server-side).
+  useEffect(() => {
+    if (!groupId || !messages || messages.length === 0) return;
+    markGroupRead.mutate(
+      { groupId },
+      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListGroupsQueryKey() }) },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId, messages?.length]);
 
   // Decrypt messages as they arrive/load, whenever we have the group key
   useEffect(() => {
@@ -464,6 +500,14 @@ export default function ChatRoom() {
             messages?.map((msg, idx) => {
               const isMe = msg.senderId === profile?.id;
               const showAvatar = !isMe && (idx === 0 || messages[idx - 1].senderId !== msg.senderId);
+              const isLastMine = isMe && !messages.slice(idx + 1).some((m) => m.senderId === profile?.id);
+              const otherMembers = group.members.filter((m) => m.userId !== profile?.id);
+              const isSeen =
+                isLastMine &&
+                otherMembers.length > 0 &&
+                otherMembers.every(
+                  (m) => m.lastReadAt && new Date(m.lastReadAt) >= new Date(msg.createdAt),
+                );
               
               return (
                 <div key={msg.id} className={`flex gap-2 group ${isMe ? 'justify-end' : 'justify-start'}`}>
@@ -553,6 +597,15 @@ export default function ChatRoom() {
                     <span className="text-[10px] text-muted-foreground/60 mt-1 px-1 flex items-center gap-1">
                       {format(new Date(msg.createdAt), "h:mm a")}
                       {msg.editedAt && !msg.deletedAt && <span>(edited)</span>}
+                      {isLastMine && (
+                        isSeen ? (
+                          <span className="flex items-center gap-0.5 text-primary/70">
+                            <CheckCheck className="w-3.5 h-3.5" /> Seen
+                          </span>
+                        ) : (
+                          <Check className="w-3.5 h-3.5" />
+                        )
+                      )}
                     </span>
                   </div>
                 </div>

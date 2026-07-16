@@ -277,6 +277,34 @@ paths:
         "404":
           description: Not found
 
+  /groups/{groupId}/read:
+    put:
+      operationId: markGroupRead
+      tags: [groups]
+      summary: Mark a group as read up to now, for the current user
+      description: >
+        Sets the current user's last-read timestamp for this group to now.
+        Powers unread badges (client compares each message's createdAt
+        against this timestamp) and "Seen" receipts (the sender compares
+        their last message's createdAt against every other member's
+        last-read timestamp). Broadcasts a WS "read" event so anyone
+        currently viewing the group updates seen-status live.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated read receipt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadReceipt"
+        "404":
+          description: Not found
+
   /groups/{groupId}/members/{userId}:
     delete:
       operationId: removeGroupMember
@@ -538,6 +566,35 @@ paths:
         "404":
           description: Not found
 
+  /dms/{threadId}/read:
+    put:
+      operationId: markDmThreadRead
+      tags: [dms]
+      summary: Mark a DM thread as read up to now, for the current user
+      description: >
+        Sets the current user's last-read timestamp for this thread to now.
+        Powers unread badges (client compares each message's createdAt
+        against this timestamp) and the "Seen" receipt (the sender compares
+        their last message's createdAt against the other participant's
+        last-read timestamp). Broadcasts a WS "read" event so the other
+        participant, if currently viewing the thread, updates seen-status
+        live.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated read receipt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadReceipt"
+        "404":
+          description: Not found
+
   /dms/{threadId}/messages:
     get:
       operationId: listDmMessages
@@ -703,6 +760,13 @@ paths:
 
 components:
   schemas:
+    ReadReceipt:
+      type: object
+      required: [lastReadAt]
+      properties:
+        lastReadAt:
+          type: string
+
     HealthStatus:
       type: object
       properties:
@@ -746,7 +810,7 @@ components:
 
     Group:
       type: object
-      required: [id, name, createdBy, createdAt, memberCount]
+      required: [id, name, createdBy, createdAt, memberCount, unreadCount]
       properties:
         id:
           type: string
@@ -762,6 +826,11 @@ components:
           type: ["string", "null"]
         lastMessagePreview:
           type: ["string", "null"]
+        myLastReadAt:
+          type: ["string", "null"]
+        unreadCount:
+          type: integer
+          description: Messages from other members created after myLastReadAt.
 
     GroupInput:
       type: object
@@ -773,7 +842,7 @@ components:
 
     GroupMember:
       type: object
-      required: [userId, name, email, role, joinedAt, hasEncryptionKey]
+      required: [userId, name, email, role, joinedAt, hasEncryptionKey, lastReadAt]
       properties:
         userId:
           type: string
@@ -791,6 +860,11 @@ components:
           type: string
         joinedAt:
           type: string
+        lastReadAt:
+          type: ["string", "null"]
+          description: >
+            Last time this member marked the group as read. Used by other
+            members to compute a "Seen" receipt on their own last message.
 
     GroupKeyResponse:
       type: object
@@ -935,7 +1009,7 @@ components:
 
     DmThread:
       type: object
-      required: [id, otherUserId, otherUserName, otherUserEmail, otherUserHasEncryptionKey, createdAt]
+      required: [id, otherUserId, otherUserName, otherUserEmail, otherUserHasEncryptionKey, createdAt, unreadCount]
       properties:
         id:
           type: string
@@ -957,6 +1031,16 @@ components:
           type: ["string", "null"]
         lastMessagePreview:
           type: ["string", "null"]
+        myLastReadAt:
+          type: ["string", "null"]
+        otherUserLastReadAt:
+          type: ["string", "null"]
+          description: >
+            Used by the current user to compute a "Seen" receipt on their
+            own last message in this thread.
+        unreadCount:
+          type: integer
+          description: Messages from the other participant created after myLastReadAt.
 
     DmMessage:
       type: object

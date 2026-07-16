@@ -17,6 +17,10 @@ export const groupMembersTable = pgTable(
     joinedAt: timestamp("joined_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // Read-receipt tracking, same idea as dm_threads' userA/BLastReadAt:
+    // the last time this member marked the group as read. Null means
+    // "never opened this group".
+    lastReadAt: timestamp("last_read_at", { withTimezone: true }),
   },
   (table) => [primaryKey({ columns: [table.groupId, table.userId] })],
 );

@@ -136,7 +136,9 @@ export function ChatListSidebar({
               No groups yet. Tap the + button to create one.
             </div>
           ) : (
-            groups?.map(group => (
+            groups?.map(group => {
+              const isUnread = group.unreadCount > 0;
+              return (
               <Link key={group.id} href={`/app/groups/${group.id}`}>
                 <div className={`flex items-center gap-3 px-3 py-3 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors ${activeGroupId === group.id ? "bg-secondary" : "hover:bg-muted/60"}`}>
                   <Avatar className="w-11 h-11 border shadow-sm flex-shrink-0">
@@ -146,20 +148,28 @@ export function ChatListSidebar({
                   </Avatar>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium truncate text-sm">{group.name}</span>
+                      <span className={`truncate text-sm ${isUnread ? "font-semibold" : "font-medium"}`}>{group.name}</span>
                       {group.lastMessageAt && (
-                        <span className="text-[11px] text-muted-foreground flex-shrink-0">
+                        <span className={`text-[11px] flex-shrink-0 ${isUnread ? "text-primary font-medium" : "text-muted-foreground"}`}>
                           {formatDistanceToNow(new Date(group.lastMessageAt), { addSuffix: true })}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {group.lastMessagePreview ?? "No messages yet."}
-                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={`text-xs truncate ${isUnread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                        {group.lastMessagePreview ?? "No messages yet."}
+                      </p>
+                      {isUnread && (
+                        <span className="flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
+                          {group.unreadCount > 99 ? "99+" : group.unreadCount}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </Link>
-            ))
+              );
+            })
           )
         ) : threadsLoading ? (
           <div className="p-2 space-y-2">
@@ -170,7 +180,9 @@ export function ChatListSidebar({
             No conversations yet. Tap the + button to message someone.
           </div>
         ) : (
-          threads?.map(thread => (
+          threads?.map(thread => {
+            const isUnread = thread.unreadCount > 0;
+            return (
             <Link key={thread.id} href={`/app/dms/${thread.id}`}>
               <div className={`flex items-center gap-3 px-3 py-3 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors ${activeThreadId === thread.id ? "bg-secondary" : "hover:bg-muted/60"}`}>
                 <Avatar className="w-11 h-11 border shadow-sm flex-shrink-0">
@@ -181,20 +193,28 @@ export function ChatListSidebar({
                 </Avatar>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium truncate text-sm">{thread.otherUserName}</span>
+                    <span className={`truncate text-sm ${isUnread ? "font-semibold" : "font-medium"}`}>{thread.otherUserName}</span>
                     {thread.lastMessageAt && (
-                      <span className="text-[11px] text-muted-foreground flex-shrink-0">
+                      <span className={`text-[11px] flex-shrink-0 ${isUnread ? "text-primary font-medium" : "text-muted-foreground"}`}>
                         {formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: true })}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {thread.lastMessagePreview ?? "No messages yet."}
-                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className={`text-xs truncate ${isUnread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                      {thread.lastMessagePreview ?? "No messages yet."}
+                    </p>
+                    {isUnread && (
+                      <span className="flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
+                        {thread.unreadCount > 99 ? "99+" : thread.unreadCount}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </Link>
-          ))
+            );
+          })
         )}
       </div>
 
