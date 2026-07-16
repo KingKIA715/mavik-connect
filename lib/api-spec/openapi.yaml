@@ -508,6 +508,27 @@ paths:
                 $ref: "#/components/schemas/DmThread"
         "404":
           description: Not found
+    delete:
+      operationId: deleteDmThread
+      tags: [dms]
+      summary: Delete an entire DM thread
+      description: >
+        Either participant can do this (unlike groups, a DM thread has no
+        single "owner"). Deletes the thread and everything in it (messages,
+        encryption keys) via cascading foreign keys, and notifies the other
+        participant over WebSocket if they're currently viewing it so their
+        client can leave the chat immediately.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
 
   /dms/{threadId}/key:
     get:

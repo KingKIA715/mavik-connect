@@ -306,6 +306,30 @@ router.get("/dms/:threadId", async (req, res): Promise<void> => {
   );
 });
 
+router.delete("/dms/:threadId", async (req, res): Promise<void> => {
+  const threadId = parseThreadId(req.params.threadId);
+  if (threadId === null) {
+    res.status(404).json({ error: "Thread not found" });
+    return;
+  }
+
+  const userId = req.userId!;
+  const member = await isThreadParticipant(threadId, userId);
+  if (!member) {
+    res.status(404).json({ error: "Thread not found" });
+    return;
+  }
+
+  // Notify the other participant, if currently connected, before the row
+  // (and its cascading messages/keys) disappears out from under them —
+  // mirrors deleteGroup's "group-deleted" broadcast.
+  broadcastToThread(threadId, { type: "dm-thread-deleted", threadId: String(threadId) });
+
+  await db.delete(dmThreadsTable).where(eq(dmThreadsTable.id, threadId));
+
+  res.sendStatus(204);
+});
+
 router.put("/dms/:threadId/read", async (req, res): Promise<void> => {
   const threadId = parseThreadId(req.params.threadId);
   if (threadId === null) {
