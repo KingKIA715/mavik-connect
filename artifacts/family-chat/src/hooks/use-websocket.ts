@@ -93,7 +93,8 @@ type DmWsMessage =
   | { type: "signal"; from: string; data: any }
   | { type: "signal-broadcast"; data: any }
   | { type: "read"; userId: string; lastReadAt: string }
-  | { type: "dm-key-ready" };
+  | { type: "dm-key-ready" }
+  | { type: "dm-thread-deleted"; threadId: string };
 
 /**
  * Same idea as useWebSocket, but connects to a DM thread (`?threadId=`)
@@ -108,6 +109,7 @@ export function useThreadWebSocket(threadId?: string) {
   const onSignalRef = useRef<((from: string, data: any) => void) | null>(null);
   const onReadRef = useRef<((userId: string, lastReadAt: string) => void) | null>(null);
   const onDmKeyReadyRef = useRef<(() => void) | null>(null);
+  const onDmThreadDeletedRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!threadId) return;
@@ -135,6 +137,8 @@ export function useThreadWebSocket(threadId?: string) {
           onReadRef.current(data.userId, data.lastReadAt);
         } else if (data.type === "dm-key-ready" && onDmKeyReadyRef.current) {
           onDmKeyReadyRef.current();
+        } else if (data.type === "dm-thread-deleted" && onDmThreadDeletedRef.current) {
+          onDmThreadDeletedRef.current();
         }
       } catch (err) {
         console.error("Failed to parse WS message", err);
@@ -154,5 +158,5 @@ export function useThreadWebSocket(threadId?: string) {
     }
   }, []);
 
-  return { isConnected, sendMessage, onMessageRef, onMessageUpdateRef, onSignalRef, onReadRef, onDmKeyReadyRef };
+  return { isConnected, sendMessage, onMessageRef, onMessageUpdateRef, onSignalRef, onReadRef, onDmKeyReadyRef, onDmThreadDeletedRef };
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetDmThread,
@@ -9,6 +9,7 @@ import {
   useDeleteDmMessage,
   useSetDmKey,
   useMarkDmThreadRead,
+  useDeleteDmThread,
   useGetMyProfile,
   getListDmMessagesQueryKey,
   getGetDmThreadQueryKey,
@@ -43,6 +44,7 @@ const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB — see ChatRoom.tsx for why
 
 export default function DmThread() {
   const { threadId } = useParams<{ threadId: string }>();
+  const [, navigate] = useLocation();
   const { data: profile } = useGetMyProfile();
   const { data: thread, isLoading: threadLoading } = useGetDmThread(threadId!, {
     query: { enabled: !!threadId, queryKey: getGetDmThreadQueryKey(threadId!) },
@@ -56,6 +58,7 @@ export default function DmThread() {
   const deleteDmMessage = useDeleteDmMessage();
   const setDmKey = useSetDmKey();
   const markThreadRead = useMarkDmThreadRead();
+  const deleteDmThread = useDeleteDmThread();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const identity = useEncryption();
@@ -68,6 +71,7 @@ export default function DmThread() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [isDeleteThreadConfirmOpen, setIsDeleteThreadConfirmOpen] = useState(false);
   // Read receipts: the other participant's last-read timestamp, seeded from
   // the thread fetch and kept live via the "read" WS event below so a
   // "Seen" checkmark appears on my last message without needing a reload.
@@ -75,7 +79,7 @@ export default function DmThread() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { onMessageRef, onMessageUpdateRef, onReadRef, onDmKeyReadyRef } = useThreadWebSocket(threadId);
+  const { onMessageRef, onMessageUpdateRef, onReadRef, onDmKeyReadyRef, onDmThreadDeletedRef } = useThreadWebSocket(threadId);
 
   useEffect(() => {
     if (thread) setOtherUserLastReadAt(thread.otherUserLastReadAt ?? null);
@@ -123,6 +127,29 @@ export default function DmThread() {
   useEffect(() => {
     onDmKeyReadyRef.current = () => retryDmKey();
   }, [onDmKeyReadyRef, retryDmKey]);
+
+  // The other participant deleted this conversation entirely — leave the
+  // page (mirrors ChatRoom.tsx's onGroupDeletedRef handling).
+  useEffect(() => {
+    onDmThreadDeletedRef.current = () => {
+      queryClient.invalidateQueries({ queryKey: getListDmThreadsQueryKey() });
+      toast({ title: "Conversation deleted", description: "This conversation no longer exists." });
+      navigate("/app");
+    };
+  }, [queryClient, onDmThreadDeletedRef, toast, navigate]);
+
+  const handleConfirmDeleteThread = async () => {
+    if (!threadId) return;
+    try {
+      await deleteDmThread.mutateAsync({ threadId });
+      queryClient.invalidateQueries({ queryKey: getListDmThreadsQueryKey() });
+      navigate("/app");
+    } catch {
+      toast({ variant: "destructive", title: "Couldn't delete conversation", description: "Please try again." });
+    } finally {
+      setIsDeleteThreadConfirmOpen(false);
+    }
+  };
 
   // Mark the thread read whenever we're looking at it and messages are
   // loaded (covers first open and every new incoming message). Also powers
@@ -330,6 +357,22 @@ export default function DmThread() {
               <span className="hidden sm:inline">Join Call</span>
             </Button>
           </Link>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="rounded-full text-muted-foreground" aria-label="Conversation actions">
+                <MoreVertical className="w-5 h-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setIsDeleteThreadConfirmOpen(true)}
+              >
+                <Trash2 className="w-4 h-4 mr-2" /> Delete Conversation
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -497,6 +540,23 @@ export default function DmThread() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isDeleteThreadConfirmOpen} onOpenChange={setIsDeleteThreadConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This can't be undone. Every message with {thread.otherUserName} will be permanently deleted for both of you.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteThread} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete Conversation
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
