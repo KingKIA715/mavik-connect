@@ -1663,6 +1663,78 @@ export function useGetDmThread<TData = Awaited<ReturnType<typeof getDmThread>>, 
 
 
 
+export const getDeleteDmThreadUrl = (threadId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}`
+}
+
+/**
+ * Either participant can do this (unlike groups, a DM thread has no single "owner"). Deletes the thread and everything in it (messages, encryption keys) via cascading foreign keys, and notifies the other participant over WebSocket if they're currently viewing it so their client can leave the chat immediately.
+ * @summary Delete an entire DM thread
+ */
+export const deleteDmThread = async (threadId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteDmThreadUrl(threadId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteDmThreadMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDmThread>>, TError,{threadId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteDmThread>>, TError,{threadId: string}, TContext> => {
+
+const mutationKey = ['deleteDmThread'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteDmThread>>, {threadId: string}> = (props) => {
+          const {threadId} = props ?? {};
+
+          return  deleteDmThread(threadId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteDmThreadMutationResult = NonNullable<Awaited<ReturnType<typeof deleteDmThread>>>
+
+    export type DeleteDmThreadMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete an entire DM thread
+ */
+export const useDeleteDmThread = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDmThread>>, TError,{threadId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteDmThread>>,
+        TError,
+        {threadId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteDmThreadMutationOptions(options));
+    }
+
 export const getGetMyDmKeyUrl = (threadId: string,) => {
 
 

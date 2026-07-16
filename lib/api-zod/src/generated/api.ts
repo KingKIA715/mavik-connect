@@ -462,6 +462,17 @@ export const GetDmThreadResponse = zod.object({
 
 
 /**
+ * Either participant can do this (unlike groups, a DM thread has no single "owner"). Deletes the thread and everything in it (messages, encryption keys) via cascading foreign keys, and notifies the other participant over WebSocket if they're currently viewing it so their client can leave the chat immediately.
+ * @summary Delete an entire DM thread
+ */
+export const DeleteDmThreadParams = zod.object({
+  "threadId": zod.coerce.string()
+})
+
+export const DeleteDmThreadResponse = zod.void()
+
+
+/**
  * Returns the thread's symmetric encryption key, wrapped with the current user's public key. Returns wrappedKey null if it has not been shared with this user yet.
  * @summary Get the current user's wrapped end-to-end encryption key for a DM thread
  */
