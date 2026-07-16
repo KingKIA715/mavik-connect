@@ -17,4 +17,9 @@ export interface GroupMember {
   hasEncryptionKey: boolean;
   role: string;
   joinedAt: string;
+  /**
+     * Last time this member marked the group as read. Used by other members to compute a "Seen" receipt on their own last message.
+     * @nullable
+     */
+  lastReadAt: string | null;
 }

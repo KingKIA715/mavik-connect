@@ -43,6 +43,7 @@ import type {
   MessageEditInput,
   MessageInput,
   PublicKeyInput,
+  ReadReceipt,
   SearchUserByEmailParams,
   SearchUserResult,
   UpdateMyProfileInput,
@@ -981,6 +982,78 @@ export const useSetGroupKey = <TError = ErrorType<void>,
       return useMutation(getSetGroupKeyMutationOptions(options));
     }
 
+export const getMarkGroupReadUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/read`
+}
+
+/**
+ * Sets the current user's last-read timestamp for this group to now. Powers unread badges (client compares each message's createdAt against this timestamp) and "Seen" receipts (the sender compares their last message's createdAt against every other member's last-read timestamp). Broadcasts a WS "read" event so anyone currently viewing the group updates seen-status live.
+ * @summary Mark a group as read up to now, for the current user
+ */
+export const markGroupRead = async (groupId: string, options?: RequestInit): Promise<ReadReceipt> => {
+
+  return customFetch<ReadReceipt>(getMarkGroupReadUrl(groupId),
+  {
+    ...options,
+    method: 'PUT'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkGroupReadMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markGroupRead>>, TError,{groupId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markGroupRead>>, TError,{groupId: string}, TContext> => {
+
+const mutationKey = ['markGroupRead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markGroupRead>>, {groupId: string}> = (props) => {
+          const {groupId} = props ?? {};
+
+          return  markGroupRead(groupId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkGroupReadMutationResult = NonNullable<Awaited<ReturnType<typeof markGroupRead>>>
+
+    export type MarkGroupReadMutationError = ErrorType<void>
+
+    /**
+ * @summary Mark a group as read up to now, for the current user
+ */
+export const useMarkGroupRead = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markGroupRead>>, TError,{groupId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markGroupRead>>,
+        TError,
+        {groupId: string},
+        TContext
+      > => {
+      return useMutation(getMarkGroupReadMutationOptions(options));
+    }
+
 export const getRemoveGroupMemberUrl = (groupId: string,
     userId: string,) => {
 
@@ -1739,6 +1812,78 @@ export const useSetDmKey = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getSetDmKeyMutationOptions(options));
+    }
+
+export const getMarkDmThreadReadUrl = (threadId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/read`
+}
+
+/**
+ * Sets the current user's last-read timestamp for this thread to now. Powers unread badges (client compares each message's createdAt against this timestamp) and the "Seen" receipt (the sender compares their last message's createdAt against the other participant's last-read timestamp). Broadcasts a WS "read" event so the other participant, if currently viewing the thread, updates seen-status live.
+ * @summary Mark a DM thread as read up to now, for the current user
+ */
+export const markDmThreadRead = async (threadId: string, options?: RequestInit): Promise<ReadReceipt> => {
+
+  return customFetch<ReadReceipt>(getMarkDmThreadReadUrl(threadId),
+  {
+    ...options,
+    method: 'PUT'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkDmThreadReadMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markDmThreadRead>>, TError,{threadId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markDmThreadRead>>, TError,{threadId: string}, TContext> => {
+
+const mutationKey = ['markDmThreadRead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markDmThreadRead>>, {threadId: string}> = (props) => {
+          const {threadId} = props ?? {};
+
+          return  markDmThreadRead(threadId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkDmThreadReadMutationResult = NonNullable<Awaited<ReturnType<typeof markDmThreadRead>>>
+
+    export type MarkDmThreadReadMutationError = ErrorType<void>
+
+    /**
+ * @summary Mark a DM thread as read up to now, for the current user
+ */
+export const useMarkDmThreadRead = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markDmThreadRead>>, TError,{threadId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markDmThreadRead>>,
+        TError,
+        {threadId: string},
+        TContext
+      > => {
+      return useMutation(getMarkDmThreadReadMutationOptions(options));
     }
 
 export const getListDmMessagesUrl = (threadId: string,

@@ -21,4 +21,13 @@ export interface DmThread {
   lastMessageAt?: string | null;
   /** @nullable */
   lastMessagePreview?: string | null;
+  /** @nullable */
+  myLastReadAt?: string | null;
+  /**
+     * Used by the current user to compute a "Seen" receipt on their own last message in this thread.
+     * @nullable
+     */
+  otherUserLastReadAt?: string | null;
+  /** Messages from the other participant created after myLastReadAt. */
+  unreadCount: number;
 }
