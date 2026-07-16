@@ -1064,7 +1064,8 @@ export const getRemoveGroupMemberUrl = (groupId: string,
 }
 
 /**
- * @summary Remove a member from a group
+ * Any member can remove themselves (leave the group). Removing someone else requires being the group's creator.
+ * @summary Remove a member from a group, or leave it yourself
  */
 export const removeGroupMember = async (groupId: string,
     userId: string, options?: RequestInit): Promise<void> => {
@@ -1082,7 +1083,7 @@ export const removeGroupMember = async (groupId: string,
 
 
 
-export const getRemoveGroupMemberMutationOptions = <TError = ErrorType<unknown>,
+export const getRemoveGroupMemberMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeGroupMember>>, TError,{groupId: string;userId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof removeGroupMember>>, TError,{groupId: string;userId: string}, TContext> => {
 
@@ -1111,12 +1112,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type RemoveGroupMemberMutationResult = NonNullable<Awaited<ReturnType<typeof removeGroupMember>>>
 
-    export type RemoveGroupMemberMutationError = ErrorType<unknown>
+    export type RemoveGroupMemberMutationError = ErrorType<void>
 
     /**
- * @summary Remove a member from a group
+ * @summary Remove a member from a group, or leave it yourself
  */
-export const useRemoveGroupMember = <TError = ErrorType<unknown>,
+export const useRemoveGroupMember = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeGroupMember>>, TError,{groupId: string;userId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof removeGroupMember>>,
@@ -1244,7 +1245,7 @@ export const sendMessage = async (groupId: string,
 
 
 
-export const getSendMessageMutationOptions = <TError = ErrorType<unknown>,
+export const getSendMessageMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendMessage>>, TError,{groupId: string;data: BodyType<MessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof sendMessage>>, TError,{groupId: string;data: BodyType<MessageInput>}, TContext> => {
 
@@ -1273,12 +1274,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type SendMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendMessage>>>
     export type SendMessageMutationBody = BodyType<MessageInput>
-    export type SendMessageMutationError = ErrorType<unknown>
+    export type SendMessageMutationError = ErrorType<void>
 
     /**
  * @summary Send a message to a group
  */
-export const useSendMessage = <TError = ErrorType<unknown>,
+export const useSendMessage = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendMessage>>, TError,{groupId: string;data: BodyType<MessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof sendMessage>>,
@@ -2075,7 +2076,7 @@ export const sendDmMessage = async (threadId: string,
 
 
 
-export const getSendDmMessageMutationOptions = <TError = ErrorType<unknown>,
+export const getSendDmMessageMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDmMessage>>, TError,{threadId: string;data: BodyType<DmMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof sendDmMessage>>, TError,{threadId: string;data: BodyType<DmMessageInput>}, TContext> => {
 
@@ -2104,12 +2105,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type SendDmMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendDmMessage>>>
     export type SendDmMessageMutationBody = BodyType<DmMessageInput>
-    export type SendDmMessageMutationError = ErrorType<unknown>
+    export type SendDmMessageMutationError = ErrorType<void>
 
     /**
  * @summary Send a message in a DM thread
  */
-export const useSendDmMessage = <TError = ErrorType<unknown>,
+export const useSendDmMessage = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDmMessage>>, TError,{threadId: string;data: BodyType<DmMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof sendDmMessage>>,

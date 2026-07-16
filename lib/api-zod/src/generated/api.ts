@@ -241,7 +241,8 @@ export const MarkGroupReadResponse = zod.object({
 
 
 /**
- * @summary Remove a member from a group
+ * Any member can remove themselves (leave the group). Removing someone else requires being the group's creator.
+ * @summary Remove a member from a group, or leave it yourself
  */
 export const RemoveGroupMemberParams = zod.object({
   "groupId": zod.coerce.string(),
