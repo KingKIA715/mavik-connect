@@ -8,35 +8,51 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { Phone, ShieldCheck, Key } from "lucide-react";
+import { Phone, ShieldCheck, Key, Smartphone, Monitor } from "lucide-react";
 
-// Rough, best-effort browser/OS label from a User-Agent string — good
-// enough for "which device was this", not meant to be precise.
-function summarizeUserAgent(ua: string | null): string {
-  if (!ua) return "Unknown device";
-  const browser = /Edg\//.test(ua)
+// Rough, best-effort browser/OS/device-type read from a User-Agent string —
+// good enough for "which device was this", not meant to be precise or used
+// for any security decision.
+function parseUserAgent(ua: string | null): {
+  label: string;
+  isMobile: boolean;
+} {
+  if (!ua) return { label: "Unknown device", isMobile: false };
+
+  const isMobile = /Mobi|Android|iPhone|iPad|iPod/.test(ua);
+
+  const browser = /EdgA?\//.test(ua)
     ? "Edge"
-    : /Chrome\//.test(ua)
-      ? "Chrome"
-      : /Firefox\//.test(ua)
-        ? "Firefox"
-        : /Safari\//.test(ua) && !/Chrome/.test(ua)
-          ? "Safari"
-          : "Browser";
-  const os = /iPhone|iPad/.test(ua)
-    ? "iOS"
-    : /Android/.test(ua)
-      ? "Android"
-      : /Mac OS X/.test(ua)
-        ? "macOS"
-        : /Windows/.test(ua)
-          ? "Windows"
-          : /Linux/.test(ua)
-            ? "Linux"
-            : "";
-  return os ? `${browser} on ${os}` : browser;
+    : /OPR\/|Opera/.test(ua)
+      ? "Opera"
+      : /CriOS|Chrome\//.test(ua)
+        ? "Chrome"
+        : /FxiOS|Firefox\//.test(ua)
+          ? "Firefox"
+          : /Safari\//.test(ua) && !/Chrome|CriOS|FxiOS/.test(ua)
+            ? "Safari"
+            : "a browser";
+
+  const os = /iPhone/.test(ua)
+    ? "iPhone"
+    : /iPad/.test(ua)
+      ? "iPad"
+      : /Android/.test(ua)
+        ? "Android"
+        : /Mac OS X/.test(ua)
+          ? "Mac"
+          : /Windows/.test(ua)
+            ? "Windows"
+            : /CrOS/.test(ua)
+              ? "Chromebook"
+              : /Linux/.test(ua)
+                ? "Linux"
+                : "";
+
+  const label = os ? `${browser} on ${os}` : browser;
+  return { label, isMobile };
 }
 
 export default function Settings() {
@@ -353,15 +369,35 @@ export default function Settings() {
           {!keyHistory || keyHistory.length === 0 ? (
             <p className="text-sm text-muted-foreground">No key activity recorded yet.</p>
           ) : (
-            <ul className="space-y-3">
-              {keyHistory.map((entry, i) => (
-                <li key={i} className="flex items-center justify-between text-sm border-b border-border last:border-0 pb-3 last:pb-0">
-                  <span className="text-foreground">{summarizeUserAgent(entry.userAgent)}</span>
-                  <span className="text-muted-foreground text-xs">
-                    {format(new Date(entry.occurredAt), "MMM d, yyyy 'at' h:mm a")}
-                  </span>
-                </li>
-              ))}
+            <ul className="space-y-1">
+              {keyHistory.map((entry, i) => {
+                const { label, isMobile } = parseUserAgent(entry.userAgent);
+                const isMostRecent = i === 0;
+                const DeviceIcon = isMobile ? Smartphone : Monitor;
+                return (
+                  <li
+                    key={i}
+                    className="flex items-center gap-3 text-sm border-b border-border last:border-0 py-2.5 first:pt-0 last:pb-0"
+                  >
+                    <DeviceIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-foreground truncate">{label}</span>
+                        {isMostRecent && (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex-shrink-0">
+                            Most recent
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-muted-foreground text-xs">
+                        {format(new Date(entry.occurredAt), "MMM d, yyyy 'at' h:mm a")}
+                        {" · "}
+                        {formatDistanceToNow(new Date(entry.occurredAt), { addSuffix: true })}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </CardContent>
