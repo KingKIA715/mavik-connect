@@ -142,6 +142,7 @@ export function ChatListSidebar({
               <Link key={group.id} href={`/app/groups/${group.id}`}>
                 <div className={`flex items-center gap-3 px-3 py-3 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors ${activeGroupId === group.id ? "bg-secondary" : "hover:bg-muted/60"}`}>
                   <Avatar className="w-11 h-11 border shadow-sm flex-shrink-0">
+                    {group.avatarUrl && <AvatarImage src={group.avatarUrl} />}
                     <AvatarFallback className="bg-primary/10 text-primary">
                       <Users className="w-5 h-5" />
                     </AvatarFallback>

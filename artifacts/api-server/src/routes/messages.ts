@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { and, asc, eq } from "drizzle-orm";
-import { db, messagesTable, usersTable } from "@workspace/db";
+import { and, asc, eq, inArray } from "drizzle-orm";
+import { db, messagesTable, messageReactionsTable, usersTable } from "@workspace/db";
 import {
   ListMessagesResponseItem,
   SendMessageBody,
@@ -8,6 +8,8 @@ import {
   EditMessageBody,
   EditMessageResponse,
   DeleteMessageResponse,
+  ToggleMessageReactionBody,
+  ToggleMessageReactionResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { messageSendRateLimit } from "../middlewares/rateLimit";
@@ -18,6 +20,42 @@ import { toIso, toIsoOrNull } from "../lib/serialize";
 const router: IRouter = Router();
 
 router.use(requireAuth);
+
+/**
+ * Aggregates raw (messageId, userId, emoji) reaction rows into the
+ * `{ emoji, userIds }[]` shape the API returns — one entry per distinct
+ * emoji on a message, with everyone who reacted with it.
+ */
+async function getReactionsByMessageId(
+  messageIds: number[],
+): Promise<Map<number, { emoji: string; userIds: string[] }[]>> {
+  if (messageIds.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      messageId: messageReactionsTable.messageId,
+      userId: messageReactionsTable.userId,
+      emoji: messageReactionsTable.emoji,
+    })
+    .from(messageReactionsTable)
+    .where(inArray(messageReactionsTable.messageId, messageIds));
+
+  const byMessage = new Map<number, Map<string, string[]>>();
+  for (const row of rows) {
+    const byEmoji = byMessage.get(row.messageId) ?? new Map<string, string[]>();
+    byEmoji.set(row.emoji, [...(byEmoji.get(row.emoji) ?? []), row.userId]);
+    byMessage.set(row.messageId, byEmoji);
+  }
+
+  const result = new Map<number, { emoji: string; userIds: string[] }[]>();
+  for (const [messageId, byEmoji] of byMessage) {
+    result.set(
+      messageId,
+      Array.from(byEmoji.entries()).map(([emoji, userIds]) => ({ emoji, userIds })),
+    );
+  }
+  return result;
+}
 
 function parsePaginationQuery(query: Record<string, unknown>): {
   limit: number;
@@ -76,6 +114,10 @@ router.get(
       .limit(limit)
       .offset(offset);
 
+    const reactionsByMessageId = await getReactionsByMessageId(
+      rows.map((r) => r.id),
+    );
+
     res.json(
       rows.map((row) =>
         ListMessagesResponseItem.parse({
@@ -85,6 +127,7 @@ router.get(
           createdAt: toIso(row.createdAt),
           editedAt: toIsoOrNull(row.editedAt),
           deletedAt: toIsoOrNull(row.deletedAt),
+          reactions: reactionsByMessageId.get(row.id) ?? [],
         }),
       ),
     );
@@ -146,6 +189,7 @@ router.post(
       createdAt: toIso(message.createdAt),
       editedAt: null,
       deletedAt: null,
+      reactions: [],
     });
 
     broadcastToGroup(groupId, { type: "message", message: payload });
@@ -207,6 +251,8 @@ router.patch(
       .from(usersTable)
       .where(eq(usersTable.id, userId));
 
+    const reactions = (await getReactionsByMessageId([messageId])).get(messageId) ?? [];
+
     const payload = EditMessageResponse.parse({
       id: String(updated.id),
       groupId: String(updated.groupId),
@@ -221,6 +267,7 @@ router.patch(
       createdAt: toIso(updated.createdAt),
       editedAt: toIsoOrNull(updated.editedAt),
       deletedAt: toIsoOrNull(updated.deletedAt),
+      reactions,
     });
 
     broadcastToGroup(groupId, { type: "message-updated", message: payload });
@@ -278,6 +325,8 @@ router.delete(
       .from(usersTable)
       .where(eq(usersTable.id, userId));
 
+    const reactions = (await getReactionsByMessageId([messageId])).get(messageId) ?? [];
+
     const payload = DeleteMessageResponse.parse({
       id: String(updated.id),
       groupId: String(updated.groupId),
@@ -292,11 +341,105 @@ router.delete(
       createdAt: toIso(updated.createdAt),
       editedAt: toIsoOrNull(updated.editedAt),
       deletedAt: toIsoOrNull(updated.deletedAt),
+      reactions,
     });
 
     broadcastToGroup(groupId, { type: "message-updated", message: payload });
 
     res.json(payload);
+  },
+);
+
+router.put(
+  "/groups/:groupId/messages/:messageId/reactions",
+  async (req, res): Promise<void> => {
+    const groupId = parseGroupId(req.params.groupId);
+    const messageId = parseGroupId(req.params.messageId);
+    if (groupId === null || messageId === null) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+
+    const userId = req.userId!;
+    const member = await isGroupMember(groupId, userId);
+    if (!member) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+
+    const [existingMessage] = await db
+      .select({ id: messagesTable.id })
+      .from(messagesTable)
+      .where(
+        and(eq(messagesTable.id, messageId), eq(messagesTable.groupId, groupId)),
+      );
+    if (!existingMessage) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+
+    const parsed = ToggleMessageReactionBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const { emoji } = parsed.data;
+
+    const [existingReaction] = await db
+      .select({ id: messageReactionsTable.id })
+      .from(messageReactionsTable)
+      .where(
+        and(
+          eq(messageReactionsTable.messageId, messageId),
+          eq(messageReactionsTable.userId, userId),
+          eq(messageReactionsTable.emoji, emoji),
+        ),
+      );
+
+    if (existingReaction) {
+      await db
+        .delete(messageReactionsTable)
+        .where(eq(messageReactionsTable.id, existingReaction.id));
+    } else {
+      await db.insert(messageReactionsTable).values({ messageId, userId, emoji });
+    }
+
+    const reactions =
+      (await getReactionsByMessageId([messageId])).get(messageId) ?? [];
+
+    // Reuse the existing "message-updated" WS event so every client's
+    // already-wired listener picks up the new reaction list without a new
+    // event type — same idea as an edit, just a different field changing.
+    const [full] = await db
+      .select()
+      .from(messagesTable)
+      .where(eq(messagesTable.id, messageId));
+    const [sender] = await db
+      .select({ name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable)
+      .where(eq(usersTable.id, full.senderId));
+
+    broadcastToGroup(groupId, {
+      type: "message-updated",
+      message: SendMessageResponse.parse({
+        id: String(full.id),
+        groupId: String(full.groupId),
+        senderId: full.senderId,
+        senderName: sender?.name ?? "Family Member",
+        senderAvatarUrl: sender?.avatarUrl ?? null,
+        content: full.content,
+        type: full.type,
+        fileName: full.fileName,
+        mimeType: full.mimeType,
+        fileSize: full.fileSize,
+        createdAt: toIso(full.createdAt),
+        editedAt: toIsoOrNull(full.editedAt),
+        deletedAt: toIsoOrNull(full.deletedAt),
+        reactions,
+      }),
+    });
+
+    res.json(ToggleMessageReactionResponse.parse(reactions));
   },
 );
 

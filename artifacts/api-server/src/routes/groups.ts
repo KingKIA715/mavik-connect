@@ -6,6 +6,7 @@ import {
   groupMembersTable,
   groupsTable,
   messagesTable,
+  messageReactionsTable,
   usersTable,
 } from "@workspace/db";
 import {
@@ -19,6 +20,10 @@ import {
   SetGroupKeyBody,
   SetGroupKeyResponse,
   MarkGroupReadResponse,
+  SetGroupAvatarBody,
+  SetGroupAvatarResponse,
+  ToggleMessageReactionBody,
+  ToggleMessageReactionResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { parseGroupId, isGroupMember } from "../lib/groupAccess";
@@ -129,6 +134,7 @@ router.get("/groups", async (req, res): Promise<void> => {
       name: group.name,
       createdBy: group.createdBy,
       createdAt: toIso(group.createdAt),
+      avatarUrl: group.avatarUrl,
       memberCount: memberCountByGroup.get(group.id) ?? 0,
       lastMessageAt: toIsoOrNull(lastMessage?.createdAt),
       lastMessagePreview: lastMessage?.content ?? null,
@@ -168,6 +174,7 @@ router.post("/groups", async (req, res): Promise<void> => {
       name: group.name,
       createdBy: group.createdBy,
       createdAt: toIso(group.createdAt),
+      avatarUrl: null,
       memberCount: 1,
       lastMessageAt: null,
       lastMessagePreview: null,
@@ -227,6 +234,7 @@ router.get("/groups/:groupId", async (req, res): Promise<void> => {
       name: group.name,
       createdBy: group.createdBy,
       createdAt: toIso(group.createdAt),
+      avatarUrl: group.avatarUrl,
       members: members.map((m) => ({
         ...m,
         joinedAt: toIso(m.joinedAt),
@@ -235,6 +243,51 @@ router.get("/groups/:groupId", async (req, res): Promise<void> => {
       })),
     }),
   );
+});
+
+router.put("/groups/:groupId/avatar", async (req, res): Promise<void> => {
+  const groupId = parseGroupId(req.params.groupId);
+  if (groupId === null) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const userId = req.userId!;
+  const member = await isGroupMember(groupId, userId);
+  if (!member) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const parsed = SetGroupAvatarBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request body" });
+    return;
+  }
+
+  const { avatarUrl } = parsed.data;
+  if (avatarUrl !== null) {
+    // Basic sanity checks — this isn't going through the message-encryption
+    // path, so keep it small and image-only. The client resizes to a
+    // thumbnail before uploading; this is a backstop, not the primary
+    // control.
+    if (!/^data:image\/(png|jpeg|jpg|webp|gif);base64,/.test(avatarUrl)) {
+      res.status(400).json({ error: "Must be an image data URI" });
+      return;
+    }
+    const MAX_LENGTH = 400_000; // ~300KB of image data, base64-inflated
+    if (avatarUrl.length > MAX_LENGTH) {
+      res.status(400).json({ error: "Image is too large" });
+      return;
+    }
+  }
+
+  await db
+    .update(groupsTable)
+    .set({ avatarUrl })
+    .where(eq(groupsTable.id, groupId));
+
+  res.json(SetGroupAvatarResponse.parse({ avatarUrl }));
 });
 
 router.delete("/groups/:groupId", async (req, res): Promise<void> => {

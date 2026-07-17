@@ -4,6 +4,7 @@ import {
   db,
   dmKeysTable,
   dmMessagesTable,
+  dmMessageReactionsTable,
   dmThreadsTable,
   usersTable,
 } from "@workspace/db";
@@ -22,6 +23,8 @@ import {
   SetDmKeyBody,
   SetDmKeyResponse,
   MarkDmThreadReadResponse,
+  ToggleDmMessageReactionBody,
+  ToggleDmMessageReactionResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { messageSendRateLimit } from "../middlewares/rateLimit";
@@ -38,6 +41,41 @@ import { toIso, toIsoOrNull } from "../lib/serialize";
 const router: IRouter = Router();
 
 router.use(requireAuth);
+
+/**
+ * Same aggregation as messages.ts's getReactionsByMessageId, over DM
+ * message reactions instead of group ones.
+ */
+async function getDmReactionsByMessageId(
+  messageIds: number[],
+): Promise<Map<number, { emoji: string; userIds: string[] }[]>> {
+  if (messageIds.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      messageId: dmMessageReactionsTable.dmMessageId,
+      userId: dmMessageReactionsTable.userId,
+      emoji: dmMessageReactionsTable.emoji,
+    })
+    .from(dmMessageReactionsTable)
+    .where(inArray(dmMessageReactionsTable.dmMessageId, messageIds));
+
+  const byMessage = new Map<number, Map<string, string[]>>();
+  for (const row of rows) {
+    const byEmoji = byMessage.get(row.messageId) ?? new Map<string, string[]>();
+    byEmoji.set(row.emoji, [...(byEmoji.get(row.emoji) ?? []), row.userId]);
+    byMessage.set(row.messageId, byEmoji);
+  }
+
+  const result = new Map<number, { emoji: string; userIds: string[] }[]>();
+  for (const [messageId, byEmoji] of byMessage) {
+    result.set(
+      messageId,
+      Array.from(byEmoji.entries()).map(([emoji, userIds]) => ({ emoji, userIds })),
+    );
+  }
+  return result;
+}
 
 function parsePaginationQuery(query: Record<string, unknown>): {
   limit: number;
@@ -487,6 +525,10 @@ router.get("/dms/:threadId/messages", async (req, res): Promise<void> => {
     .limit(limit)
     .offset(offset);
 
+  const reactionsByMessageId = await getDmReactionsByMessageId(
+    rows.map((r) => r.id),
+  );
+
   res.json(
     rows.map((row) =>
       ListDmMessagesResponseItem.parse({
@@ -496,6 +538,7 @@ router.get("/dms/:threadId/messages", async (req, res): Promise<void> => {
         createdAt: toIso(row.createdAt),
         editedAt: toIsoOrNull(row.editedAt),
         deletedAt: toIsoOrNull(row.deletedAt),
+        reactions: reactionsByMessageId.get(row.id) ?? [],
       }),
     ),
   );
@@ -553,6 +596,7 @@ router.post("/dms/:threadId/messages", messageSendRateLimit, async (req, res): P
     createdAt: toIso(message.createdAt),
     editedAt: null,
     deletedAt: null,
+    reactions: [],
   });
 
   broadcastToThread(threadId, { type: "message", message: payload });
@@ -616,6 +660,8 @@ router.patch(
       .from(usersTable)
       .where(eq(usersTable.id, userId));
 
+    const reactions = (await getDmReactionsByMessageId([messageId])).get(messageId) ?? [];
+
     const payload = EditDmMessageResponse.parse({
       id: String(updated.id),
       threadId: String(updated.threadId),
@@ -630,6 +676,7 @@ router.patch(
       createdAt: toIso(updated.createdAt),
       editedAt: toIsoOrNull(updated.editedAt),
       deletedAt: toIsoOrNull(updated.deletedAt),
+      reactions,
     });
 
     broadcastToThread(threadId, { type: "message-updated", message: payload });
@@ -690,6 +737,8 @@ router.delete(
       .from(usersTable)
       .where(eq(usersTable.id, userId));
 
+    const reactions = (await getDmReactionsByMessageId([messageId])).get(messageId) ?? [];
+
     const payload = DeleteDmMessageResponse.parse({
       id: String(updated.id),
       threadId: String(updated.threadId),
@@ -704,11 +753,107 @@ router.delete(
       createdAt: toIso(updated.createdAt),
       editedAt: toIsoOrNull(updated.editedAt),
       deletedAt: toIsoOrNull(updated.deletedAt),
+      reactions,
     });
 
     broadcastToThread(threadId, { type: "message-updated", message: payload });
 
     res.json(payload);
+  },
+);
+
+router.put(
+  "/dms/:threadId/messages/:messageId/reactions",
+  async (req, res): Promise<void> => {
+    const threadId = parseThreadId(req.params.threadId);
+    const messageId = parseThreadId(req.params.messageId);
+    if (threadId === null || messageId === null) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+
+    const userId = req.userId!;
+    const member = await isThreadParticipant(threadId, userId);
+    if (!member) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+
+    const [existingMessage] = await db
+      .select({ id: dmMessagesTable.id })
+      .from(dmMessagesTable)
+      .where(
+        and(
+          eq(dmMessagesTable.id, messageId),
+          eq(dmMessagesTable.threadId, threadId),
+        ),
+      );
+    if (!existingMessage) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+
+    const parsed = ToggleDmMessageReactionBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const { emoji } = parsed.data;
+
+    const [existingReaction] = await db
+      .select({ id: dmMessageReactionsTable.id })
+      .from(dmMessageReactionsTable)
+      .where(
+        and(
+          eq(dmMessageReactionsTable.dmMessageId, messageId),
+          eq(dmMessageReactionsTable.userId, userId),
+          eq(dmMessageReactionsTable.emoji, emoji),
+        ),
+      );
+
+    if (existingReaction) {
+      await db
+        .delete(dmMessageReactionsTable)
+        .where(eq(dmMessageReactionsTable.id, existingReaction.id));
+    } else {
+      await db
+        .insert(dmMessageReactionsTable)
+        .values({ dmMessageId: messageId, userId, emoji });
+    }
+
+    const reactions =
+      (await getDmReactionsByMessageId([messageId])).get(messageId) ?? [];
+
+    const [full] = await db
+      .select()
+      .from(dmMessagesTable)
+      .where(eq(dmMessagesTable.id, messageId));
+    const [sender] = await db
+      .select({ name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable)
+      .where(eq(usersTable.id, full.senderId));
+
+    broadcastToThread(threadId, {
+      type: "message-updated",
+      message: SendDmMessageResponse.parse({
+        id: String(full.id),
+        threadId: String(full.threadId),
+        senderId: full.senderId,
+        senderName: sender?.name ?? "Family Member",
+        senderAvatarUrl: sender?.avatarUrl ?? null,
+        content: full.content,
+        type: full.type,
+        fileName: full.fileName,
+        mimeType: full.mimeType,
+        fileSize: full.fileSize,
+        createdAt: toIso(full.createdAt),
+        editedAt: toIsoOrNull(full.editedAt),
+        deletedAt: toIsoOrNull(full.deletedAt),
+        reactions,
+      }),
+    });
+
+    res.json(ToggleDmMessageReactionResponse.parse(reactions));
   },
 );
 

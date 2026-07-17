@@ -94,6 +94,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/UserProfile"
 
+  /users/me/key-history:
+    get:
+      operationId: getKeyHistory
+      tags: [users]
+      summary: List when this user's encryption key was set or changed
+      description: >
+        Not a full multi-device trust/revoke system — this app only holds
+        one active keypair per user, so there's no per-device key to
+        individually revoke. This is a read-only timeline (most recent
+        first) of when the key was set or rotated and a rough
+        browser/OS guess from the User-Agent at the time, so someone can
+        tell "that's why my other browser stopped working" rather than a
+        security control.
+      responses:
+        "200":
+          description: Key history, most recent first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KeyRotationEntry"
+
   /users/search:
     get:
       operationId: searchUserByEmail
@@ -190,6 +213,40 @@ paths:
           description: Deleted
         "403":
           description: Not the group's creator
+        "404":
+          description: Not found
+
+  /groups/{groupId}/avatar:
+    put:
+      operationId: setGroupAvatar
+      tags: [groups]
+      summary: Set or clear a group's photo
+      description: >
+        Body is a small base64 data URI — the client resizes to a thumbnail
+        before uploading. Not E2E-encrypted (same tradeoff as a user's
+        profile photo). Pass null to remove the current photo. Any member
+        may change it.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetGroupAvatarInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetGroupAvatarInput"
+        "400":
+          description: Image too large or not a data URI
         "404":
           description: Not found
 
@@ -460,6 +517,44 @@ paths:
                 $ref: "#/components/schemas/Message"
         "403":
           description: Not the sender
+        "404":
+          description: Not found
+
+  /groups/{groupId}/messages/{messageId}/reactions:
+    put:
+      operationId: toggleMessageReaction
+      tags: [messages]
+      summary: Toggle your reaction on a message
+      description: >
+        If you've already reacted with this emoji, removes it; otherwise
+        adds it. Any current group member may react, including to their own
+        messages. Returns the message's full updated reaction list.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToggleReactionInput"
+      responses:
+        "200":
+          description: Updated reactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessageReaction"
         "404":
           description: Not found
 
@@ -756,6 +851,43 @@ paths:
         "404":
           description: Not found
 
+  /dms/{threadId}/messages/{messageId}/reactions:
+    put:
+      operationId: toggleDmMessageReaction
+      tags: [dms]
+      summary: Toggle your reaction on a DM message
+      description: >
+        If you've already reacted with this emoji, removes it; otherwise
+        adds it. Returns the message's full updated reaction list.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToggleReactionInput"
+      responses:
+        "200":
+          description: Updated reactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessageReaction"
+        "404":
+          description: Not found
+
   /activity:
     get:
       operationId: getRecentActivity
@@ -792,12 +924,37 @@ paths:
 
 components:
   schemas:
+    KeyRotationEntry:
+      type: object
+      required: [occurredAt, userAgent]
+      properties:
+        occurredAt:
+          type: string
+        userAgent:
+          type: ["string", "null"]
+
     ReadReceipt:
       type: object
       required: [lastReadAt]
       properties:
         lastReadAt:
           type: string
+
+    SetGroupAvatarInput:
+      type: object
+      required: [avatarUrl]
+      properties:
+        avatarUrl:
+          type: ["string", "null"]
+
+    ToggleReactionInput:
+      type: object
+      required: [emoji]
+      properties:
+        emoji:
+          type: string
+          minLength: 1
+          maxLength: 8
 
     HealthStatus:
       type: object
@@ -852,6 +1009,8 @@ components:
           type: string
         createdAt:
           type: string
+        avatarUrl:
+          type: ["string", "null"]
         memberCount:
           type: integer
         lastMessageAt:
@@ -936,14 +1095,27 @@ components:
           type: string
         createdAt:
           type: string
+        avatarUrl:
+          type: ["string", "null"]
         members:
           type: array
           items:
             $ref: "#/components/schemas/GroupMember"
 
+    MessageReaction:
+      type: object
+      required: [emoji, userIds]
+      properties:
+        emoji:
+          type: string
+        userIds:
+          type: array
+          items:
+            type: string
+
     Message:
       type: object
-      required: [id, groupId, senderId, senderName, content, type, createdAt]
+      required: [id, groupId, senderId, senderName, content, type, createdAt, reactions]
       properties:
         id:
           type: string
@@ -973,6 +1145,10 @@ components:
           type: ["string", "null"]
         deletedAt:
           type: ["string", "null"]
+        reactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageReaction"
 
     MessageInput:
       type: object
@@ -1076,7 +1252,7 @@ components:
 
     DmMessage:
       type: object
-      required: [id, threadId, senderId, senderName, content, type, createdAt]
+      required: [id, threadId, senderId, senderName, content, type, createdAt, reactions]
       properties:
         id:
           type: string
@@ -1106,6 +1282,10 @@ components:
           type: ["string", "null"]
         deletedAt:
           type: ["string", "null"]
+        reactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageReaction"
 
     DmMessageInput:
       type: object

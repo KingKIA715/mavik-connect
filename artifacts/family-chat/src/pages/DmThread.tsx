@@ -10,6 +10,7 @@ import {
   useSetDmKey,
   useMarkDmThreadRead,
   useDeleteDmThread,
+  useToggleDmMessageReaction,
   useGetMyProfile,
   getListDmMessagesQueryKey,
   getGetDmThreadQueryKey,
@@ -31,7 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Send, Lock, ShieldAlert, Paperclip, Download, FileText, Phone, Video, MoreVertical, Pencil, Trash2, Check, CheckCheck, Search, X } from "lucide-react";
+import { ArrowLeft, Send, Lock, ShieldAlert, Paperclip, Download, FileText, Phone, Video, MoreVertical, Pencil, Trash2, Check, CheckCheck, Search, X, Smile } from "lucide-react";
 import { format } from "date-fns";
 import {
   useEncryption,
@@ -41,6 +42,8 @@ import {
 import { encryptMessage, decryptMessage, encryptFile, decryptFile, isEncryptedPayload } from "@/lib/crypto";
 
 const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB — see ChatRoom.tsx for why
+
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 export default function DmThread() {
   const { threadId } = useParams<{ threadId: string }>();
@@ -59,6 +62,7 @@ export default function DmThread() {
   const setDmKey = useSetDmKey();
   const markThreadRead = useMarkDmThreadRead();
   const deleteDmThread = useDeleteDmThread();
+  const toggleReaction = useToggleDmMessageReaction();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const identity = useEncryption();
@@ -74,6 +78,9 @@ export default function DmThread() {
   const [isDeleteThreadConfirmOpen, setIsDeleteThreadConfirmOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isOtherTyping, setIsOtherTyping] = useState(false);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const lastTypingSentAtRef = useRef(0);
 
   // Messages are end-to-end encrypted — the server only ever sees
   // ciphertext, so search has to run client-side over what's already been
@@ -94,7 +101,7 @@ export default function DmThread() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { onMessageRef, onMessageUpdateRef, onReadRef, onDmKeyReadyRef, onDmThreadDeletedRef } = useThreadWebSocket(threadId);
+  const { sendMessage, onMessageRef, onMessageUpdateRef, onReadRef, onDmKeyReadyRef, onDmThreadDeletedRef, onTypingRef } = useThreadWebSocket(threadId);
 
   useEffect(() => {
     if (thread) setOtherUserLastReadAt(thread.otherUserLastReadAt ?? null);
@@ -164,6 +171,43 @@ export default function DmThread() {
     } finally {
       setIsDeleteThreadConfirmOpen(false);
     }
+  };
+
+  // Typing indicator — ephemeral, relayed live over WS, never persisted.
+  // Each "typing" event refreshes a 3s auto-expiry timer, so it disappears
+  // on its own if the other person stops typing without sending.
+  useEffect(() => {
+    onTypingRef.current = () => {
+      setIsOtherTyping(true);
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => setIsOtherTyping(false), 3000);
+    };
+  }, [onTypingRef]);
+
+  useEffect(() => {
+    return () => clearTimeout(typingTimeoutRef.current);
+  }, []);
+
+  const handleTyping = () => {
+    const now = Date.now();
+    if (now - lastTypingSentAtRef.current < 2000) return;
+    lastTypingSentAtRef.current = now;
+    sendMessage({ type: "typing" });
+  };
+
+  const handleToggleReaction = (messageId: string, emoji: string) => {
+    if (!threadId) return;
+    toggleReaction.mutate(
+      { threadId, messageId, data: { emoji } },
+      {
+        onSuccess: (reactions) => {
+          queryClient.setQueryData(getListDmMessagesQueryKey(threadId), (old: any) => {
+            if (!old) return old;
+            return old.map((m: any) => (m.id === messageId ? { ...m, reactions } : m));
+          });
+        },
+      },
+    );
   };
 
   // Mark the thread read whenever we're looking at it and messages are
@@ -541,7 +585,50 @@ export default function DmThread() {
                           <Check className="w-3.5 h-3.5" />
                         )
                       )}
+                      {!msg.deletedAt && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 text-muted-foreground hover:text-foreground"
+                              aria-label="React"
+                            >
+                              <Smile className="w-3.5 h-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align={isMe ? "end" : "start"} className="flex gap-1 p-1.5 w-auto">
+                            {QUICK_REACTIONS.map((emoji) => (
+                              <button
+                                key={emoji}
+                                type="button"
+                                className="text-lg hover:scale-125 transition-transform px-1"
+                                onClick={() => handleToggleReaction(msg.id, emoji)}
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </span>
+                    {msg.reactions.length > 0 && (
+                      <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        {msg.reactions.map((r) => (
+                          <button
+                            key={r.emoji}
+                            type="button"
+                            onClick={() => handleToggleReaction(msg.id, r.emoji)}
+                            className={`text-xs px-1.5 py-0.5 rounded-full border transition-colors ${
+                              r.userIds.includes(profile?.id ?? "")
+                                ? "bg-primary/10 border-primary/30 text-primary"
+                                : "bg-white border-border text-muted-foreground hover:bg-muted/50"
+                            }`}
+                          >
+                            {r.emoji} {r.userIds.length}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -551,7 +638,14 @@ export default function DmThread() {
       </div>
 
       {/* Composer */}
-      <div className="flex-none p-4 bg-white border-t border-border shadow-[0_-4px_20px_-15px_rgba(0,0,0,0.1)]">
+      <div className="flex-none px-4 pt-2 bg-white">
+        {isOtherTyping && (
+          <div className="max-w-3xl mx-auto text-xs text-muted-foreground italic px-2 pb-1">
+            {thread.otherUserName} is typing…
+          </div>
+        )}
+      </div>
+      <div className="flex-none p-4 pt-0 bg-white border-t border-border shadow-[0_-4px_20px_-15px_rgba(0,0,0,0.1)]">
         <form onSubmit={handleSend} className="max-w-3xl mx-auto flex items-end gap-3 relative">
           <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
           <Button
@@ -567,7 +661,10 @@ export default function DmThread() {
           </Button>
           <Input
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => {
+              setContent(e.target.value);
+              handleTyping();
+            }}
             placeholder={isUploading ? "Sending file…" : !dmKey ? "Waiting for encryption access…" : "Type a message..."}
             className="flex-1 bg-muted/30 border-muted-border rounded-full px-6 py-6 text-base shadow-inner focus-visible:ring-1"
           />

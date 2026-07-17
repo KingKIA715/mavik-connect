@@ -10,6 +10,8 @@ import {
   useAddGroupMember,
   useRemoveGroupMember,
   useDeleteGroup,
+  useSetGroupAvatar,
+  useToggleMessageReaction,
   useGetMyProfile,
   useSetGroupKey,
   useMarkGroupRead,
@@ -36,12 +38,14 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Video, Phone, Send, UserPlus, Users, Lock, ShieldAlert, Crown, Paperclip, Download, FileText, Check, CheckCheck, Search, X } from "lucide-react";
+import { Video, Phone, Send, UserPlus, Users, Lock, ShieldAlert, Crown, Paperclip, Download, FileText, Check, CheckCheck, Search, X, Camera, Smile } from "lucide-react";
 import { format } from "date-fns";
 import { useEncryption, useMyGroupKey, shareGroupKeyWithMember } from "@/hooks/use-encryption";
 import { encryptMessage, decryptMessage, encryptFile, decryptFile, isEncryptedPayload } from "@/lib/crypto";
 
 const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB — keep encrypted+base64 payload comfortably under the server's 15mb JSON limit
+
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 export default function ChatRoom() {
   const { groupId } = useParams<{ groupId: string }>();
@@ -56,6 +60,8 @@ export default function ChatRoom() {
   const addMember = useAddGroupMember();
   const removeMember = useRemoveGroupMember();
   const deleteGroup = useDeleteGroup();
+  const setGroupAvatar = useSetGroupAvatar();
+  const toggleReaction = useToggleMessageReaction();
   const setGroupKey = useSetGroupKey();
   const markGroupRead = useMarkGroupRead();
   const queryClient = useQueryClient();
@@ -77,6 +83,9 @@ export default function ChatRoom() {
   const [isLeaveGroupConfirmOpen, setIsLeaveGroupConfirmOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
+  const typingTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const lastTypingSentAtRef = useRef(0);
 
   // Messages are end-to-end encrypted — the server only ever sees
   // ciphertext, so search has to run client-side over what's already been
@@ -92,9 +101,10 @@ export default function ChatRoom() {
   }, [messages, decrypted, searchQuery]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const groupPhotoInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { isConnected, onMessageRef, onMessageUpdateRef, onGroupDeletedRef, onReadRef, onGroupKeyReadyRef, onMemberRemovedRef } = useWebSocket(groupId);
+  const { isConnected, sendMessage: sendWsMessage, onMessageRef, onMessageUpdateRef, onGroupDeletedRef, onReadRef, onGroupKeyReadyRef, onMemberRemovedRef, onTypingRef } = useWebSocket(groupId);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -185,6 +195,98 @@ export default function ChatRoom() {
     } finally {
       setIsLeaveGroupConfirmOpen(false);
     }
+  };
+
+  // Group photos aren't E2E-encrypted (see the schema comment on
+  // groups.avatarUrl), so we keep the payload small client-side rather than
+  // relying on the server to reject an oversized upload: resize to a
+  // 128x128 thumbnail and JPEG-compress before sending.
+  const handleGroupPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !groupId) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ variant: "destructive", title: "Please choose an image file" });
+      return;
+    }
+
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = () => {
+          img.onload = () => {
+            const size = 128;
+            const canvas = document.createElement("canvas");
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+              reject(new Error("Canvas not supported"));
+              return;
+            }
+            const scale = Math.max(size / img.width, size / img.height);
+            const w = img.width * scale;
+            const h = img.height * scale;
+            ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+            resolve(canvas.toDataURL("image/jpeg", 0.85));
+          };
+          img.onerror = () => reject(new Error("Couldn't read image"));
+          img.src = reader.result as string;
+        };
+        reader.onerror = () => reject(new Error("Couldn't read file"));
+        reader.readAsDataURL(file);
+      });
+
+      await setGroupAvatar.mutateAsync({ groupId, data: { avatarUrl: dataUrl } });
+      queryClient.invalidateQueries({ queryKey: getGetGroupQueryKey(groupId) });
+      queryClient.invalidateQueries({ queryKey: getListGroupsQueryKey() });
+    } catch {
+      toast({ variant: "destructive", title: "Couldn't update group photo", description: "Please try again." });
+    }
+  };
+
+  // Typing indicators are ephemeral — relayed live over WS, never persisted.
+  // Each "typing" event refreshes a 3s auto-expiry timer for that user, so
+  // the indicator disappears on its own if they stop typing without sending.
+  useEffect(() => {
+    onTypingRef.current = (userId) => {
+      if (userId === profile?.id) return;
+      setTypingUserIds((prev) => (prev.includes(userId) ? prev : [...prev, userId]));
+      clearTimeout(typingTimeoutsRef.current[userId]);
+      typingTimeoutsRef.current[userId] = setTimeout(() => {
+        setTypingUserIds((prev) => prev.filter((id) => id !== userId));
+      }, 3000);
+    };
+  }, [profile?.id, onTypingRef]);
+
+  useEffect(() => {
+    const timeouts = typingTimeoutsRef.current;
+    return () => {
+      Object.values(timeouts).forEach(clearTimeout);
+    };
+  }, []);
+
+  const handleTyping = () => {
+    const now = Date.now();
+    if (now - lastTypingSentAtRef.current < 2000) return;
+    lastTypingSentAtRef.current = now;
+    sendWsMessage({ type: "typing" });
+  };
+
+  const handleToggleReaction = (messageId: string, emoji: string) => {
+    if (!groupId) return;
+    toggleReaction.mutate(
+      { groupId, messageId, data: { emoji } },
+      {
+        onSuccess: (reactions) => {
+          queryClient.setQueryData(getListMessagesQueryKey(groupId), (old: any) => {
+            if (!old) return old;
+            return old.map((m: any) => (m.id === messageId ? { ...m, reactions } : m));
+          });
+        },
+      },
+    );
   };
 
   // Mark the group read whenever we're looking at it and messages are
@@ -403,6 +505,12 @@ export default function ChatRoom() {
               <ArrowLeft className="w-5 h-5" />
             </Button>
           </Link>
+          <Avatar className="w-9 h-9 border shadow-sm flex-shrink-0 hidden sm:flex">
+            {group.avatarUrl && <AvatarImage src={group.avatarUrl} />}
+            <AvatarFallback className="bg-primary/10 text-primary">
+              <Users className="w-4 h-4" />
+            </AvatarFallback>
+          </Avatar>
           <h2 className="font-serif text-lg sm:text-xl font-bold text-foreground truncate max-w-[40vw] sm:max-w-none">{group.name}</h2>
           <Dialog open={isMembersOpen} onOpenChange={setIsMembersOpen}>
             <DialogTrigger asChild>
@@ -419,6 +527,35 @@ export default function ChatRoom() {
               <DialogHeader>
                 <DialogTitle className="font-serif text-xl">Family Members</DialogTitle>
               </DialogHeader>
+
+              <div className="flex flex-col items-center gap-2 pb-2">
+                <input
+                  ref={groupPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleGroupPhotoSelect}
+                />
+                <button
+                  type="button"
+                  className="relative group/avatar"
+                  onClick={() => groupPhotoInputRef.current?.click()}
+                  aria-label="Change group photo"
+                  disabled={setGroupAvatar.isPending}
+                >
+                  <Avatar className="w-20 h-20 border shadow-sm">
+                    {group.avatarUrl && <AvatarImage src={group.avatarUrl} />}
+                    <AvatarFallback className="bg-primary/10 text-primary">
+                      <Users className="w-8 h-8" />
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center">
+                    <Camera className="w-6 h-6 text-white" />
+                  </div>
+                </button>
+                <span className="text-xs text-muted-foreground">Tap to change photo</span>
+              </div>
+
               <div className="space-y-3 pt-2 max-h-96 overflow-y-auto">
                 {group.members.map((member) => (
                   <div key={member.userId} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
@@ -705,7 +842,50 @@ export default function ChatRoom() {
                           <Check className="w-3.5 h-3.5" />
                         )
                       )}
+                      {!msg.deletedAt && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 text-muted-foreground hover:text-foreground"
+                              aria-label="React"
+                            >
+                              <Smile className="w-3.5 h-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align={isMe ? "end" : "start"} className="flex gap-1 p-1.5 w-auto">
+                            {QUICK_REACTIONS.map((emoji) => (
+                              <button
+                                key={emoji}
+                                type="button"
+                                className="text-lg hover:scale-125 transition-transform px-1"
+                                onClick={() => handleToggleReaction(msg.id, emoji)}
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </span>
+                    {msg.reactions.length > 0 && (
+                      <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        {msg.reactions.map((r) => (
+                          <button
+                            key={r.emoji}
+                            type="button"
+                            onClick={() => handleToggleReaction(msg.id, r.emoji)}
+                            className={`text-xs px-1.5 py-0.5 rounded-full border transition-colors ${
+                              r.userIds.includes(profile?.id ?? "")
+                                ? "bg-primary/10 border-primary/30 text-primary"
+                                : "bg-white border-border text-muted-foreground hover:bg-muted/50"
+                            }`}
+                          >
+                            {r.emoji} {r.userIds.length}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -715,7 +895,17 @@ export default function ChatRoom() {
       </div>
 
       {/* Composer */}
-      <div className="flex-none p-4 bg-white border-t border-border shadow-[0_-4px_20px_-15px_rgba(0,0,0,0.1)]">
+      <div className="flex-none px-4 pt-2 bg-white">
+        {typingUserIds.length > 0 && (
+          <div className="max-w-3xl mx-auto text-xs text-muted-foreground italic px-2 pb-1">
+            {typingUserIds
+              .map((id) => group.members.find((m) => m.userId === id)?.name ?? "Someone")
+              .join(", ")}{" "}
+            {typingUserIds.length === 1 ? "is" : "are"} typing…
+          </div>
+        )}
+      </div>
+      <div className="flex-none p-4 pt-0 bg-white border-t border-border shadow-[0_-4px_20px_-15px_rgba(0,0,0,0.1)]">
         <form onSubmit={handleSend} className="max-w-3xl mx-auto flex items-end gap-3 relative">
           <input
             ref={fileInputRef}
@@ -736,7 +926,10 @@ export default function ChatRoom() {
           </Button>
           <Input 
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => {
+              setContent(e.target.value);
+              handleTyping();
+            }}
             placeholder={isUploading ? "Sending file…" : "Type a message..."}
             className="flex-1 bg-muted/30 border-muted-border rounded-full px-6 py-6 text-base shadow-inner focus-visible:ring-1"
           />

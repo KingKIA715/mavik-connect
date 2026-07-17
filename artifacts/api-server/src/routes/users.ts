@@ -1,11 +1,18 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, usersTable, groupKeysTable, dmKeysTable } from "@workspace/db";
+import { desc, eq } from "drizzle-orm";
+import {
+  db,
+  usersTable,
+  groupKeysTable,
+  dmKeysTable,
+  keyRotationsTable,
+} from "@workspace/db";
 import {
   GetMyProfileResponse,
   SearchUserByEmailResponse,
   SetMyPublicKeyBody,
   UpdateMyProfileBody,
+  GetKeyHistoryResponseItem,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { toIso } from "../lib/serialize";
@@ -119,7 +126,41 @@ router.put(
       await db.delete(dmKeysTable).where(eq(dmKeysTable.userId, req.userId!));
     }
 
+    // Log every time a key gets set (first setup or a rotation) so the
+    // user can see a rough "when/where" timeline in Settings. See the
+    // schema comment on keyRotationsTable for why this isn't a full
+    // per-device trust/revoke system.
+    await db.insert(keyRotationsTable).values({
+      userId: req.userId!,
+      userAgent: req.headers["user-agent"] ?? null,
+    });
+
     res.json(GetMyProfileResponse.parse({ ...user, createdAt: toIso(user.createdAt) }));
+  },
+);
+
+router.get(
+  "/users/me/key-history",
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const rows = await db
+      .select({
+        occurredAt: keyRotationsTable.occurredAt,
+        userAgent: keyRotationsTable.userAgent,
+      })
+      .from(keyRotationsTable)
+      .where(eq(keyRotationsTable.userId, req.userId!))
+      .orderBy(desc(keyRotationsTable.occurredAt))
+      .limit(20);
+
+    res.json(
+      rows.map((row) =>
+        GetKeyHistoryResponseItem.parse({
+          occurredAt: toIso(row.occurredAt),
+          userAgent: row.userAgent,
+        }),
+      ),
+    );
   },
 );
 

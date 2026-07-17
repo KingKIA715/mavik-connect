@@ -4,3 +4,5 @@ export * from "./groupMembers";
 export * from "./messages";
 export * from "./groupKeys";
 export * from "./dms";
+export * from "./messageReactions";
+export * from "./keyRotations";

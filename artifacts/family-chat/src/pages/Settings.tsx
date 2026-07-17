@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useGetMyProfile, useUpdateMyProfile, getGetMyProfileQueryKey } from "@workspace/api-client-react";
+import { useGetMyProfile, useUpdateMyProfile, useGetKeyHistory, getGetMyProfileQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -10,10 +10,38 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { Phone, ShieldCheck } from "lucide-react";
+import { Phone, ShieldCheck, Key } from "lucide-react";
+
+// Rough, best-effort browser/OS label from a User-Agent string — good
+// enough for "which device was this", not meant to be precise.
+function summarizeUserAgent(ua: string | null): string {
+  if (!ua) return "Unknown device";
+  const browser = /Edg\//.test(ua)
+    ? "Edge"
+    : /Chrome\//.test(ua)
+      ? "Chrome"
+      : /Firefox\//.test(ua)
+        ? "Firefox"
+        : /Safari\//.test(ua) && !/Chrome/.test(ua)
+          ? "Safari"
+          : "Browser";
+  const os = /iPhone|iPad/.test(ua)
+    ? "iOS"
+    : /Android/.test(ua)
+      ? "Android"
+      : /Mac OS X/.test(ua)
+        ? "macOS"
+        : /Windows/.test(ua)
+          ? "Windows"
+          : /Linux/.test(ua)
+            ? "Linux"
+            : "";
+  return os ? `${browser} on ${os}` : browser;
+}
 
 export default function Settings() {
   const { data: profile, isLoading } = useGetMyProfile();
+  const { data: keyHistory } = useGetKeyHistory();
   const { isLoaded, user } = useUser();
   const updateProfile = useUpdateMyProfile();
   const queryClient = useQueryClient();
@@ -305,6 +333,37 @@ export default function Settings() {
               {isSavingPassword ? "Updating..." : "Change Password"}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Key activity */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-serif text-lg flex items-center gap-2">
+            <Key className="w-4 h-4" /> Encryption Key Activity
+          </CardTitle>
+          <CardDescription>
+            A timeline of when your message-encryption key was set up or changed, and roughly where from.
+            This app keeps one active key per account rather than tracking individual devices, so this is a
+            history for your own reference — not a list you can revoke devices from. If you don't recognize
+            an entry, the safest step is changing your password above.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!keyHistory || keyHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No key activity recorded yet.</p>
+          ) : (
+            <ul className="space-y-3">
+              {keyHistory.map((entry, i) => (
+                <li key={i} className="flex items-center justify-between text-sm border-b border-border last:border-0 pb-3 last:pb-0">
+                  <span className="text-foreground">{summarizeUserAgent(entry.userAgent)}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {format(new Date(entry.occurredAt), "MMM d, yyyy 'at' h:mm a")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
     </div>

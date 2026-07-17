@@ -114,6 +114,10 @@ export function attachWebSocketServer(server: HttpServer): void {
                 { type: "signal", from: userId, data: data.data },
                 conn,
               );
+            } else if (data.type === "typing") {
+              // Ephemeral — not persisted anywhere, just relayed live to
+              // everyone else currently in this group.
+              broadcastToGroup(groupId, { type: "typing", userId }, conn);
             }
           });
 
@@ -179,6 +183,8 @@ export function attachWebSocketServer(server: HttpServer): void {
                 { type: "signal", from: userId, data: data.data },
                 conn,
               );
+            } else if (data.type === "typing") {
+              broadcastToThread(threadId, { type: "typing", userId }, conn);
             }
           });
 
