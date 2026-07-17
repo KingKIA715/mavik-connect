@@ -5,8 +5,27 @@
  * API specification
  * OpenAPI spec version: 0.2.0
  */
+export interface KeyRotationEntry {
+  occurredAt: string;
+  /** @nullable */
+  userAgent: string | null;
+}
+
 export interface ReadReceipt {
   lastReadAt: string;
+}
+
+export interface SetGroupAvatarInput {
+  /** @nullable */
+  avatarUrl: string | null;
+}
+
+export interface ToggleReactionInput {
+  /**
+     * @minLength 1
+     * @maxLength 8
+     */
+  emoji: string;
 }
 
 export interface HealthStatus {
@@ -39,6 +58,8 @@ export interface Group {
   name: string;
   createdBy: string;
   createdAt: string;
+  /** @nullable */
+  avatarUrl?: string | null;
   memberCount: number;
   /** @nullable */
   lastMessageAt?: string | null;
@@ -94,7 +115,14 @@ export interface GroupDetail {
   name: string;
   createdBy: string;
   createdAt: string;
+  /** @nullable */
+  avatarUrl?: string | null;
   members: GroupMember[];
+}
+
+export interface MessageReaction {
+  emoji: string;
+  userIds: string[];
 }
 
 export type MessageType = typeof MessageType[keyof typeof MessageType];
@@ -125,6 +153,7 @@ export interface Message {
   editedAt?: string | null;
   /** @nullable */
   deletedAt?: string | null;
+  reactions: MessageReaction[];
 }
 
 export type MessageInputType = typeof MessageInputType[keyof typeof MessageInputType];
@@ -229,6 +258,7 @@ export interface DmMessage {
   editedAt?: string | null;
   /** @nullable */
   deletedAt?: string | null;
+  reactions: MessageReaction[];
 }
 
 export type DmMessageInputType = typeof DmMessageInputType[keyof typeof DmMessageInputType];

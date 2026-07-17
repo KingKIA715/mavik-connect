@@ -37,15 +37,19 @@ import type {
   GroupMember,
   GroupMemberInput,
   HealthStatus,
+  KeyRotationEntry,
   ListDmMessagesParams,
   ListMessagesParams,
   Message,
   MessageEditInput,
   MessageInput,
+  MessageReaction,
   PublicKeyInput,
   ReadReceipt,
   SearchUserByEmailParams,
   SearchUserResult,
+  SetGroupAvatarInput,
+  ToggleReactionInput,
   UpdateMyProfileInput,
   UserProfile
 } from './api.schemas';
@@ -376,6 +380,84 @@ export const useSetMyPublicKey = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getSetMyPublicKeyMutationOptions(options));
     }
+
+export const getGetKeyHistoryUrl = () => {
+
+
+
+
+  return `/api/users/me/key-history`
+}
+
+/**
+ * Not a full multi-device trust/revoke system — this app only holds one active keypair per user, so there's no per-device key to individually revoke. This is a read-only timeline (most recent first) of when the key was set or rotated and a rough browser/OS guess from the User-Agent at the time, so someone can tell "that's why my other browser stopped working" rather than a security control.
+ * @summary List when this user's encryption key was set or changed
+ */
+export const getKeyHistory = async ( options?: RequestInit): Promise<KeyRotationEntry[]> => {
+
+  return customFetch<KeyRotationEntry[]>(getGetKeyHistoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetKeyHistoryQueryKey = () => {
+    return [
+    `/api/users/me/key-history`
+    ] as const;
+    }
+
+
+export const getGetKeyHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getKeyHistory>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKeyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetKeyHistoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getKeyHistory>>> = ({ signal }) => getKeyHistory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getKeyHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetKeyHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getKeyHistory>>>
+export type GetKeyHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List when this user's encryption key was set or changed
+ */
+
+export function useGetKeyHistory<TData = Awaited<ReturnType<typeof getKeyHistory>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKeyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetKeyHistoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getSearchUserByEmailUrl = (params: SearchUserByEmailParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -757,6 +839,79 @@ export const useDeleteGroup = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getDeleteGroupMutationOptions(options));
+    }
+
+export const getSetGroupAvatarUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/avatar`
+}
+
+/**
+ * Body is a small base64 data URI — the client resizes to a thumbnail before uploading. Not E2E-encrypted (same tradeoff as a user's profile photo). Pass null to remove the current photo. Any member may change it.
+ * @summary Set or clear a group's photo
+ */
+export const setGroupAvatar = async (groupId: string,
+    setGroupAvatarInput: SetGroupAvatarInput, options?: RequestInit): Promise<SetGroupAvatarInput> => {
+
+  return customFetch<SetGroupAvatarInput>(getSetGroupAvatarUrl(groupId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(setGroupAvatarInput)
+  }
+);}
+
+
+
+
+
+export const getSetGroupAvatarMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setGroupAvatar>>, TError,{groupId: string;data: BodyType<SetGroupAvatarInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setGroupAvatar>>, TError,{groupId: string;data: BodyType<SetGroupAvatarInput>}, TContext> => {
+
+const mutationKey = ['setGroupAvatar'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setGroupAvatar>>, {groupId: string;data: BodyType<SetGroupAvatarInput>}> = (props) => {
+          const {groupId,data} = props ?? {};
+
+          return  setGroupAvatar(groupId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetGroupAvatarMutationResult = NonNullable<Awaited<ReturnType<typeof setGroupAvatar>>>
+    export type SetGroupAvatarMutationBody = BodyType<SetGroupAvatarInput>
+    export type SetGroupAvatarMutationError = ErrorType<void>
+
+    /**
+ * @summary Set or clear a group's photo
+ */
+export const useSetGroupAvatar = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setGroupAvatar>>, TError,{groupId: string;data: BodyType<SetGroupAvatarInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setGroupAvatar>>,
+        TError,
+        {groupId: string;data: BodyType<SetGroupAvatarInput>},
+        TContext
+      > => {
+      return useMutation(getSetGroupAvatarMutationOptions(options));
     }
 
 export const getAddGroupMemberUrl = (groupId: string,) => {
@@ -1437,6 +1592,81 @@ export const useDeleteMessage = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getDeleteMessageMutationOptions(options));
+    }
+
+export const getToggleMessageReactionUrl = (groupId: string,
+    messageId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/messages/${messageId}/reactions`
+}
+
+/**
+ * If you've already reacted with this emoji, removes it; otherwise adds it. Any current group member may react, including to their own messages. Returns the message's full updated reaction list.
+ * @summary Toggle your reaction on a message
+ */
+export const toggleMessageReaction = async (groupId: string,
+    messageId: string,
+    toggleReactionInput: ToggleReactionInput, options?: RequestInit): Promise<MessageReaction[]> => {
+
+  return customFetch<MessageReaction[]>(getToggleMessageReactionUrl(groupId,messageId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(toggleReactionInput)
+  }
+);}
+
+
+
+
+
+export const getToggleMessageReactionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleMessageReaction>>, TError,{groupId: string;messageId: string;data: BodyType<ToggleReactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof toggleMessageReaction>>, TError,{groupId: string;messageId: string;data: BodyType<ToggleReactionInput>}, TContext> => {
+
+const mutationKey = ['toggleMessageReaction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof toggleMessageReaction>>, {groupId: string;messageId: string;data: BodyType<ToggleReactionInput>}> = (props) => {
+          const {groupId,messageId,data} = props ?? {};
+
+          return  toggleMessageReaction(groupId,messageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ToggleMessageReactionMutationResult = NonNullable<Awaited<ReturnType<typeof toggleMessageReaction>>>
+    export type ToggleMessageReactionMutationBody = BodyType<ToggleReactionInput>
+    export type ToggleMessageReactionMutationError = ErrorType<void>
+
+    /**
+ * @summary Toggle your reaction on a message
+ */
+export const useToggleMessageReaction = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleMessageReaction>>, TError,{groupId: string;messageId: string;data: BodyType<ToggleReactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof toggleMessageReaction>>,
+        TError,
+        {groupId: string;messageId: string;data: BodyType<ToggleReactionInput>},
+        TContext
+      > => {
+      return useMutation(getToggleMessageReactionMutationOptions(options));
     }
 
 export const getListDmThreadsUrl = () => {
@@ -2268,6 +2498,81 @@ export const useDeleteDmMessage = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getDeleteDmMessageMutationOptions(options));
+    }
+
+export const getToggleDmMessageReactionUrl = (threadId: string,
+    messageId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/messages/${messageId}/reactions`
+}
+
+/**
+ * If you've already reacted with this emoji, removes it; otherwise adds it. Returns the message's full updated reaction list.
+ * @summary Toggle your reaction on a DM message
+ */
+export const toggleDmMessageReaction = async (threadId: string,
+    messageId: string,
+    toggleReactionInput: ToggleReactionInput, options?: RequestInit): Promise<MessageReaction[]> => {
+
+  return customFetch<MessageReaction[]>(getToggleDmMessageReactionUrl(threadId,messageId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(toggleReactionInput)
+  }
+);}
+
+
+
+
+
+export const getToggleDmMessageReactionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleDmMessageReaction>>, TError,{threadId: string;messageId: string;data: BodyType<ToggleReactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof toggleDmMessageReaction>>, TError,{threadId: string;messageId: string;data: BodyType<ToggleReactionInput>}, TContext> => {
+
+const mutationKey = ['toggleDmMessageReaction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof toggleDmMessageReaction>>, {threadId: string;messageId: string;data: BodyType<ToggleReactionInput>}> = (props) => {
+          const {threadId,messageId,data} = props ?? {};
+
+          return  toggleDmMessageReaction(threadId,messageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ToggleDmMessageReactionMutationResult = NonNullable<Awaited<ReturnType<typeof toggleDmMessageReaction>>>
+    export type ToggleDmMessageReactionMutationBody = BodyType<ToggleReactionInput>
+    export type ToggleDmMessageReactionMutationError = ErrorType<void>
+
+    /**
+ * @summary Toggle your reaction on a DM message
+ */
+export const useToggleDmMessageReaction = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleDmMessageReaction>>, TError,{threadId: string;messageId: string;data: BodyType<ToggleReactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof toggleDmMessageReaction>>,
+        TError,
+        {threadId: string;messageId: string;data: BodyType<ToggleReactionInput>},
+        TContext
+      > => {
+      return useMutation(getToggleDmMessageReactionMutationOptions(options));
     }
 
 export const getGetRecentActivityUrl = (params?: GetRecentActivityParams,) => {

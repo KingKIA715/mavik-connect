@@ -11,6 +11,8 @@ export interface Group {
   name: string;
   createdBy: string;
   createdAt: string;
+  /** @nullable */
+  avatarUrl?: string | null;
   memberCount: number;
   /** @nullable */
   lastMessageAt?: string | null;

@@ -74,6 +74,17 @@ export const SetMyPublicKeyResponse = zod.object({
 
 
 /**
+ * Not a full multi-device trust/revoke system — this app only holds one active keypair per user, so there's no per-device key to individually revoke. This is a read-only timeline (most recent first) of when the key was set or rotated and a rough browser/OS guess from the User-Agent at the time, so someone can tell "that's why my other browser stopped working" rather than a security control.
+ * @summary List when this user's encryption key was set or changed
+ */
+export const GetKeyHistoryResponseItem = zod.object({
+  "occurredAt": zod.string(),
+  "userAgent": zod.string().nullable()
+})
+export const GetKeyHistoryResponse = zod.array(GetKeyHistoryResponseItem)
+
+
+/**
  * Used to start a new DM thread, the same way group invites work. Returns 404 if no registered user matches the given email exactly.
  * @summary Search for a registered user by exact email match
  */
@@ -98,6 +109,7 @@ export const ListGroupsResponseItem = zod.object({
   "name": zod.string(),
   "createdBy": zod.string(),
   "createdAt": zod.string(),
+  "avatarUrl": zod.string().nullish(),
   "memberCount": zod.number(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessagePreview": zod.string().nullish(),
@@ -122,6 +134,7 @@ export const CreateGroupResponse = zod.object({
   "name": zod.string(),
   "createdBy": zod.string(),
   "createdAt": zod.string(),
+  "avatarUrl": zod.string().nullish(),
   "memberCount": zod.number(),
   "lastMessageAt": zod.string().nullish(),
   "lastMessagePreview": zod.string().nullish(),
@@ -142,6 +155,7 @@ export const GetGroupResponse = zod.object({
   "name": zod.string(),
   "createdBy": zod.string(),
   "createdAt": zod.string(),
+  "avatarUrl": zod.string().nullish(),
   "members": zod.array(zod.object({
   "userId": zod.string(),
   "name": zod.string(),
@@ -165,6 +179,23 @@ export const DeleteGroupParams = zod.object({
 })
 
 export const DeleteGroupResponse = zod.void()
+
+
+/**
+ * Body is a small base64 data URI — the client resizes to a thumbnail before uploading. Not E2E-encrypted (same tradeoff as a user's profile photo). Pass null to remove the current photo. Any member may change it.
+ * @summary Set or clear a group's photo
+ */
+export const SetGroupAvatarParams = zod.object({
+  "groupId": zod.coerce.string()
+})
+
+export const SetGroupAvatarBody = zod.object({
+  "avatarUrl": zod.string().nullable()
+})
+
+export const SetGroupAvatarResponse = zod.object({
+  "avatarUrl": zod.string().nullable()
+})
 
 
 /**
@@ -288,7 +319,11 @@ export const ListMessagesResponseItem = zod.object({
   "fileSize": zod.number().nullish(),
   "createdAt": zod.string(),
   "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish()
+  "deletedAt": zod.string().nullish(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "userIds": zod.array(zod.string())
+}))
 })
 export const ListMessagesResponse = zod.array(ListMessagesResponseItem)
 
@@ -326,7 +361,11 @@ export const SendMessageResponse = zod.object({
   "fileSize": zod.number().nullish(),
   "createdAt": zod.string(),
   "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish()
+  "deletedAt": zod.string().nullish(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "userIds": zod.array(zod.string())
+}))
 })
 
 
@@ -361,7 +400,11 @@ export const EditMessageResponse = zod.object({
   "fileSize": zod.number().nullish(),
   "createdAt": zod.string(),
   "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish()
+  "deletedAt": zod.string().nullish(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "userIds": zod.array(zod.string())
+}))
 })
 
 
@@ -389,8 +432,36 @@ export const DeleteMessageResponse = zod.object({
   "fileSize": zod.number().nullish(),
   "createdAt": zod.string(),
   "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish()
+  "deletedAt": zod.string().nullish(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "userIds": zod.array(zod.string())
+}))
 })
+
+
+/**
+ * If you've already reacted with this emoji, removes it; otherwise adds it. Any current group member may react, including to their own messages. Returns the message's full updated reaction list.
+ * @summary Toggle your reaction on a message
+ */
+export const ToggleMessageReactionParams = zod.object({
+  "groupId": zod.coerce.string(),
+  "messageId": zod.coerce.string()
+})
+
+export const toggleMessageReactionBodyEmojiMax = 8;
+
+
+
+export const ToggleMessageReactionBody = zod.object({
+  "emoji": zod.string().min(1).max(toggleMessageReactionBodyEmojiMax)
+})
+
+export const ToggleMessageReactionResponseItem = zod.object({
+  "emoji": zod.string(),
+  "userIds": zod.array(zod.string())
+})
+export const ToggleMessageReactionResponse = zod.array(ToggleMessageReactionResponseItem)
 
 
 /**
@@ -558,7 +629,11 @@ export const ListDmMessagesResponseItem = zod.object({
   "fileSize": zod.number().nullish(),
   "createdAt": zod.string(),
   "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish()
+  "deletedAt": zod.string().nullish(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "userIds": zod.array(zod.string())
+}))
 })
 export const ListDmMessagesResponse = zod.array(ListDmMessagesResponseItem)
 
@@ -596,7 +671,11 @@ export const SendDmMessageResponse = zod.object({
   "fileSize": zod.number().nullish(),
   "createdAt": zod.string(),
   "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish()
+  "deletedAt": zod.string().nullish(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "userIds": zod.array(zod.string())
+}))
 })
 
 
@@ -631,7 +710,11 @@ export const EditDmMessageResponse = zod.object({
   "fileSize": zod.number().nullish(),
   "createdAt": zod.string(),
   "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish()
+  "deletedAt": zod.string().nullish(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "userIds": zod.array(zod.string())
+}))
 })
 
 
@@ -659,8 +742,36 @@ export const DeleteDmMessageResponse = zod.object({
   "fileSize": zod.number().nullish(),
   "createdAt": zod.string(),
   "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish()
+  "deletedAt": zod.string().nullish(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "userIds": zod.array(zod.string())
+}))
 })
+
+
+/**
+ * If you've already reacted with this emoji, removes it; otherwise adds it. Returns the message's full updated reaction list.
+ * @summary Toggle your reaction on a DM message
+ */
+export const ToggleDmMessageReactionParams = zod.object({
+  "threadId": zod.coerce.string(),
+  "messageId": zod.coerce.string()
+})
+
+export const toggleDmMessageReactionBodyEmojiMax = 8;
+
+
+
+export const ToggleDmMessageReactionBody = zod.object({
+  "emoji": zod.string().min(1).max(toggleDmMessageReactionBodyEmojiMax)
+})
+
+export const ToggleDmMessageReactionResponseItem = zod.object({
+  "emoji": zod.string(),
+  "userIds": zod.array(zod.string())
+})
+export const ToggleDmMessageReactionResponse = zod.array(ToggleDmMessageReactionResponseItem)
 
 
 /**

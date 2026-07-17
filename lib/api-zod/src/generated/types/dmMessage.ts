@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.2.0
  */
 import type { DmMessageType } from './dmMessageType';
+import type { MessageReaction } from './messageReaction';
 
 export interface DmMessage {
   id: string;
@@ -27,4 +28,5 @@ export interface DmMessage {
   editedAt?: string | null;
   /** @nullable */
   deletedAt?: string | null;
+  reactions: MessageReaction[];
 }

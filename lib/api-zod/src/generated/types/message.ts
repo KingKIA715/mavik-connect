@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.2.0
  */
+import type { MessageReaction } from './messageReaction';
 import type { MessageType } from './messageType';
 
 export interface Message {
@@ -27,4 +28,5 @@ export interface Message {
   editedAt?: string | null;
   /** @nullable */
   deletedAt?: string | null;
+  reactions: MessageReaction[];
 }

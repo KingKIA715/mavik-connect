@@ -12,5 +12,7 @@ export interface GroupDetail {
   name: string;
   createdBy: string;
   createdAt: string;
+  /** @nullable */
+  avatarUrl?: string | null;
   members: GroupMember[];
 }
