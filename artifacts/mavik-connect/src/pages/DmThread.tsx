@@ -8,6 +8,7 @@ import {
   useEditDmMessage,
   useDeleteDmMessage,
   useSetDmKey,
+  useRequestDmKeyAccess,
   useMarkDmThreadRead,
   useDeleteDmThread,
   useToggleDmMessageReaction,
@@ -109,6 +110,7 @@ export default function DmThread() {
   const editDmMessage = useEditDmMessage();
   const deleteDmMessage = useDeleteDmMessage();
   const setDmKey = useSetDmKey();
+  const requestDmKeyAccess = useRequestDmKeyAccess();
   const markThreadRead = useMarkDmThreadRead();
   const deleteDmThread = useDeleteDmThread();
   const toggleReaction = useToggleDmMessageReaction();
@@ -179,6 +181,7 @@ export default function DmThread() {
     onMessageUpdateRef,
     onReadRef,
     onDmKeyReadyRef,
+    onDmKeyRequestedRef,
     onDmThreadDeletedRef,
     onTypingRef,
   } = useThreadWebSocket(threadId);
@@ -235,6 +238,38 @@ export default function DmThread() {
   useEffect(() => {
     onDmKeyReadyRef.current = () => retryDmKey();
   }, [onDmKeyReadyRef, retryDmKey]);
+
+  // The other participant's browser lost its copy of the thread key and
+  // asked for it back via requestDmKeyAccess. If I'm currently connected
+  // here and already hold the decrypted key, re-share it with their (new)
+  // public key immediately, rather than making them wait for me to happen
+  // to reopen this conversation myself.
+  useEffect(() => {
+    onDmKeyRequestedRef.current = (requesterId) => {
+      if (!dmKey || !thread || !threadId || requesterId === profile?.id) return;
+      if (requesterId !== thread.otherUserId || !thread.otherUserPublicKey)
+        return;
+      shareDmKeyWithParticipant({
+        threadId,
+        dmKey,
+        participantUserId: thread.otherUserId,
+        participantPublicKey: thread.otherUserPublicKey,
+        setDmKey: (args) => setDmKey.mutateAsync(args),
+      }).then(() => {
+        queryClient.invalidateQueries({
+          queryKey: getGetDmThreadQueryKey(threadId),
+        });
+      });
+    };
+  }, [
+    onDmKeyRequestedRef,
+    dmKey,
+    thread,
+    threadId,
+    profile?.id,
+    setDmKey,
+    queryClient,
+  ]);
 
   // The other participant deleted this conversation entirely — leave the
   // page (mirrors ChatRoom.tsx's onGroupDeletedRef handling).
@@ -672,16 +707,25 @@ export default function DmThread() {
           </h2>
 
           {dmKeyStatus === "ready" && (
-            <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
               <Lock className="w-3.5 h-3.5" />
-              Encrypted
+              <span className="hidden sm:inline">Encrypted</span>
             </div>
           )}
           {dmKeyStatus === "missing" && (
-            <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full">
+            <button
+              type="button"
+              onClick={() => {
+                retryDmKey();
+                requestDmKeyAccess.mutate({ threadId: threadId! });
+              }}
+              className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors px-2.5 py-1 rounded-full"
+            >
               <ShieldAlert className="w-3.5 h-3.5" />
-              Waiting for access
-            </div>
+              <span className="hidden sm:inline">
+                Waiting for access — tap to retry
+              </span>
+            </button>
           )}
         </div>
 
@@ -771,6 +815,32 @@ export default function DmThread() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6" ref={scrollRef}>
         <div className="max-w-3xl mx-auto space-y-6">
+          {dmKeyStatus === "missing" && (messages?.length ?? 0) > 0 && (
+            <div className="flex flex-col sm:flex-row items-center gap-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl px-4 py-3 text-sm">
+              <ShieldAlert className="w-5 h-5 flex-shrink-0" />
+              <div className="flex-1 text-center sm:text-left">
+                This browser lost access to this conversation's encryption key —
+                likely from clearing site data. Messages will unlock
+                automatically once {thread.otherUserName} opens this
+                conversation, or you can nudge them now.
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-full flex-shrink-0 bg-white"
+                disabled={requestDmKeyAccess.isPending}
+                onClick={() => {
+                  requestDmKeyAccess.mutate({ threadId: threadId! });
+                  toast({
+                    title: "Request sent",
+                    description: `Asking ${thread.otherUserName} if they're online right now.`,
+                  });
+                }}
+              >
+                Restore access
+              </Button>
+            </div>
+          )}
           {messagesLoading ? null : messages?.length === 0 ? (
             <div className="text-center py-20 text-muted-foreground italic font-serif">
               It's quiet here. Send the first message to {thread.otherUserName}!
@@ -906,6 +976,7 @@ export default function DmThread() {
                             !!decrypted[msg.id] ||
                             !isEncryptedPayload(msg.content)
                           }
+                          keyMissing={dmKeyStatus === "missing"}
                         />
                       </div>
                     ) : msg.type === "voice" ? (
@@ -918,6 +989,7 @@ export default function DmThread() {
                             !!decrypted[msg.id] ||
                             !isEncryptedPayload(msg.content)
                           }
+                          keyMissing={dmKeyStatus === "missing"}
                         />
                       </div>
                     ) : editingMessageId === msg.id ? (
@@ -964,7 +1036,10 @@ export default function DmThread() {
                       `}
                       >
                         {isEncryptedPayload(msg.content)
-                          ? (decrypted[msg.id] ?? "🔒 Decrypting…")
+                          ? (decrypted[msg.id] ??
+                            (dmKeyStatus === "missing"
+                              ? "🔒 Waiting for access to decrypt"
+                              : "🔒 Decrypting…"))
                           : msg.content}
                       </div>
                     )}
@@ -1243,6 +1318,7 @@ function FileBubble({
   fileSize,
   url,
   ready,
+  keyMissing,
 }: {
   isMe: boolean;
   fileName?: string | null;
@@ -1250,6 +1326,7 @@ function FileBubble({
   fileSize?: number | null;
   url?: string;
   ready: boolean;
+  keyMissing?: boolean;
 }) {
   const isImage = !!mimeType?.startsWith("image/");
   const sizeLabel =
@@ -1265,7 +1342,8 @@ function FileBubble({
         className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-2 ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-white border border-border text-foreground rounded-tl-sm"}`}
       >
         <FileText className="w-4 h-4" />
-        {fileName ?? "File"} — 🔒 Decrypting…
+        {fileName ?? "File"} —{" "}
+        {keyMissing ? "🔒 Waiting for access" : "🔒 Decrypting…"}
       </div>
     );
   }
@@ -1307,11 +1385,13 @@ function VoiceBubble({
   durationSeconds,
   url,
   ready,
+  keyMissing,
 }: {
   isMe: boolean;
   durationSeconds?: number | null;
   url?: string;
   ready: boolean;
+  keyMissing?: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -1323,7 +1403,8 @@ function VoiceBubble({
         className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-2 ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-white border border-border text-foreground rounded-tl-sm"}`}
       >
         <Mic className="w-4 h-4" />
-        Voice message — 🔒 Decrypting…
+        Voice message —{" "}
+        {keyMissing ? "🔒 Waiting for access" : "🔒 Decrypting…"}
       </div>
     );
   }

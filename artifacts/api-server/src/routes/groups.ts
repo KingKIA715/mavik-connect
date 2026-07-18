@@ -26,6 +26,7 @@ import {
   ToggleMessageReactionResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
+import { keyRequestRateLimit } from "../middlewares/rateLimit";
 import { parseGroupId, isGroupMember } from "../lib/groupAccess";
 import { broadcastToGroup, sendToUser } from "../ws/hub";
 import { toIso, toIsoOrNull } from "../lib/serialize";
@@ -117,7 +118,9 @@ router.get("/groups", async (req, res): Promise<void> => {
           and(
             eq(messagesTable.groupId, groupId),
             ne(messagesTable.senderId, userId),
-            myLastReadAt ? gt(messagesTable.createdAt, myLastReadAt) : undefined,
+            myLastReadAt
+              ? gt(messagesTable.createdAt, myLastReadAt)
+              : undefined,
           ),
         );
       return { groupId, count: rows.length };
@@ -319,7 +322,10 @@ router.delete("/groups/:groupId", async (req, res): Promise<void> => {
 
   // Notify anyone currently connected before the row (and its cascading
   // members/messages/keys) disappears out from under them.
-  broadcastToGroup(groupId, { type: "group-deleted", groupId: String(groupId) });
+  broadcastToGroup(groupId, {
+    type: "group-deleted",
+    groupId: String(groupId),
+  });
 
   await db.delete(groupsTable).where(eq(groupsTable.id, groupId));
 
@@ -361,7 +367,10 @@ router.post("/groups/:groupId/members", async (req, res): Promise<void> => {
     .onConflictDoNothing();
 
   const [membership] = await db
-    .select({ joinedAt: groupMembersTable.joinedAt, role: groupMembersTable.role })
+    .select({
+      joinedAt: groupMembersTable.joinedAt,
+      role: groupMembersTable.role,
+    })
     .from(groupMembersTable)
     .where(
       and(
@@ -499,6 +508,33 @@ router.post("/groups/:groupId/keys", async (req, res): Promise<void> => {
     }),
   );
 });
+
+router.post(
+  "/groups/:groupId/keys/request",
+  keyRequestRateLimit,
+  async (req, res): Promise<void> => {
+    const groupId = parseGroupId(req.params.groupId);
+    if (groupId === null) {
+      res.status(404).json({ error: "Group not found" });
+      return;
+    }
+
+    const requesterId = req.userId!;
+    const requesterIsMember = await isGroupMember(groupId, requesterId);
+    if (!requesterIsMember) {
+      res.status(404).json({ error: "Group not found" });
+      return;
+    }
+
+    // Best-effort nudge: anyone else currently connected to this group who
+    // already holds the decrypted key will re-share it for requesterId. If
+    // no one else is online right now, this is a no-op — the existing
+    // "share on reconnect" flow is still the fallback.
+    broadcastToGroup(groupId, { type: "group-key-requested", requesterId });
+
+    res.status(202).end();
+  },
+);
 
 router.delete(
   "/groups/:groupId/members/:userId",

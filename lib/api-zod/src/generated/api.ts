@@ -259,6 +259,17 @@ export const SetGroupKeyResponse = zod.object({
 
 
 /**
+ * Used when this browser's copy of the group key is missing (e.g. its private key was lost when the browser's storage was cleared). Pings any other member currently connected to this group over WebSocket; if their client already holds the decrypted group key, it re-wraps and re-shares it for this user automatically. Best-effort — if no other member is currently viewing this group, nothing happens until one of them opens it (or requests again later).
+ * @summary Ask other connected members to re-share the group key with me
+ */
+export const RequestGroupKeyAccessParams = zod.object({
+  "groupId": zod.coerce.string()
+})
+
+export const RequestGroupKeyAccessResponse = zod.void()
+
+
+/**
  * Sets the current user's last-read timestamp for this group to now. Powers unread badges (client compares each message's createdAt against this timestamp) and "Seen" receipts (the sender compares their last message's createdAt against every other member's last-read timestamp). Broadcasts a WS "read" event so anyone currently viewing the group updates seen-status live.
  * @summary Mark a group as read up to now, for the current user
  */
@@ -629,6 +640,17 @@ export const SetDmKeyResponse = zod.object({
   "threadId": zod.string(),
   "wrappedKey": zod.string().nullable()
 })
+
+
+/**
+ * Same idea as requestGroupKeyAccess, for a DM thread. Best-effort — only takes effect if the other participant is currently connected to this thread and already holds the decrypted key.
+ * @summary Ask the other participant to re-share the thread key with me
+ */
+export const RequestDmKeyAccessParams = zod.object({
+  "threadId": zod.coerce.string()
+})
+
+export const RequestDmKeyAccessResponse = zod.void()
 
 
 /**

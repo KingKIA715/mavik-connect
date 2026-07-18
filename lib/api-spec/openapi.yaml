@@ -334,6 +334,31 @@ paths:
         "404":
           description: Not found
 
+  /groups/{groupId}/keys/request:
+    post:
+      operationId: requestGroupKeyAccess
+      tags: [groups]
+      summary: Ask other connected members to re-share the group key with me
+      description: >
+        Used when this browser's copy of the group key is missing (e.g. its
+        private key was lost when the browser's storage was cleared). Pings
+        any other member currently connected to this group over WebSocket;
+        if their client already holds the decrypted group key, it re-wraps
+        and re-shares it for this user automatically. Best-effort — if no
+        other member is currently viewing this group, nothing happens until
+        one of them opens it (or requests again later).
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Request broadcast (delivery not guaranteed)
+        "404":
+          description: Not found
+
   /groups/{groupId}/read:
     put:
       operationId: markGroupRead
@@ -688,6 +713,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DmKeyResponse"
+        "404":
+          description: Not found
+
+  /dms/{threadId}/keys/request:
+    post:
+      operationId: requestDmKeyAccess
+      tags: [dms]
+      summary: Ask the other participant to re-share the thread key with me
+      description: >
+        Same idea as requestGroupKeyAccess, for a DM thread. Best-effort —
+        only takes effect if the other participant is currently connected
+        to this thread and already holds the decrypted key.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Request sent (delivery not guaranteed)
         "404":
           description: Not found
 

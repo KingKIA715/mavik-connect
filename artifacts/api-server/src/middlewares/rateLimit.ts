@@ -75,3 +75,14 @@ export const messageSendRateLimit = rateLimit({
   windowMs: 10_000,
   message: "You're sending messages too quickly. Please wait a moment.",
 });
+
+/**
+ * Key-access-request limit: 5 per minute, per user. This just pings other
+ * connected clients to re-share an encryption key — cheap, but still worth
+ * capping so a stuck client can't hammer everyone else's socket in a loop.
+ */
+export const keyRequestRateLimit = rateLimit({
+  max: 5,
+  windowMs: 60_000,
+  message: "Please wait a moment before requesting access again.",
+});

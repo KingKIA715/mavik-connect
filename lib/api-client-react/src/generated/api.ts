@@ -1137,6 +1137,78 @@ export const useSetGroupKey = <TError = ErrorType<void>,
       return useMutation(getSetGroupKeyMutationOptions(options));
     }
 
+export const getRequestGroupKeyAccessUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/keys/request`
+}
+
+/**
+ * Used when this browser's copy of the group key is missing (e.g. its private key was lost when the browser's storage was cleared). Pings any other member currently connected to this group over WebSocket; if their client already holds the decrypted group key, it re-wraps and re-shares it for this user automatically. Best-effort — if no other member is currently viewing this group, nothing happens until one of them opens it (or requests again later).
+ * @summary Ask other connected members to re-share the group key with me
+ */
+export const requestGroupKeyAccess = async (groupId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getRequestGroupKeyAccessUrl(groupId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRequestGroupKeyAccessMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestGroupKeyAccess>>, TError,{groupId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestGroupKeyAccess>>, TError,{groupId: string}, TContext> => {
+
+const mutationKey = ['requestGroupKeyAccess'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestGroupKeyAccess>>, {groupId: string}> = (props) => {
+          const {groupId} = props ?? {};
+
+          return  requestGroupKeyAccess(groupId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestGroupKeyAccessMutationResult = NonNullable<Awaited<ReturnType<typeof requestGroupKeyAccess>>>
+
+    export type RequestGroupKeyAccessMutationError = ErrorType<void>
+
+    /**
+ * @summary Ask other connected members to re-share the group key with me
+ */
+export const useRequestGroupKeyAccess = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestGroupKeyAccess>>, TError,{groupId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestGroupKeyAccess>>,
+        TError,
+        {groupId: string},
+        TContext
+      > => {
+      return useMutation(getRequestGroupKeyAccessMutationOptions(options));
+    }
+
 export const getMarkGroupReadUrl = (groupId: string,) => {
 
 
@@ -2115,6 +2187,78 @@ export const useSetDmKey = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getSetDmKeyMutationOptions(options));
+    }
+
+export const getRequestDmKeyAccessUrl = (threadId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/keys/request`
+}
+
+/**
+ * Same idea as requestGroupKeyAccess, for a DM thread. Best-effort — only takes effect if the other participant is currently connected to this thread and already holds the decrypted key.
+ * @summary Ask the other participant to re-share the thread key with me
+ */
+export const requestDmKeyAccess = async (threadId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getRequestDmKeyAccessUrl(threadId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRequestDmKeyAccessMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestDmKeyAccess>>, TError,{threadId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestDmKeyAccess>>, TError,{threadId: string}, TContext> => {
+
+const mutationKey = ['requestDmKeyAccess'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestDmKeyAccess>>, {threadId: string}> = (props) => {
+          const {threadId} = props ?? {};
+
+          return  requestDmKeyAccess(threadId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestDmKeyAccessMutationResult = NonNullable<Awaited<ReturnType<typeof requestDmKeyAccess>>>
+
+    export type RequestDmKeyAccessMutationError = ErrorType<void>
+
+    /**
+ * @summary Ask the other participant to re-share the thread key with me
+ */
+export const useRequestDmKeyAccess = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestDmKeyAccess>>, TError,{threadId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestDmKeyAccess>>,
+        TError,
+        {threadId: string},
+        TContext
+      > => {
+      return useMutation(getRequestDmKeyAccessMutationOptions(options));
     }
 
 export const getMarkDmThreadReadUrl = (threadId: string,) => {

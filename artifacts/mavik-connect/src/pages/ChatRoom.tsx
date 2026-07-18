@@ -14,6 +14,7 @@ import {
   useToggleMessageReaction,
   useGetMyProfile,
   useSetGroupKey,
+  useRequestGroupKeyAccess,
   useMarkGroupRead,
   getListMessagesQueryKey,
   getGetGroupQueryKey,
@@ -165,6 +166,7 @@ export default function ChatRoom() {
   const setGroupAvatar = useSetGroupAvatar();
   const toggleReaction = useToggleMessageReaction();
   const setGroupKey = useSetGroupKey();
+  const requestGroupKeyAccess = useRequestGroupKeyAccess();
   const markGroupRead = useMarkGroupRead();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -232,6 +234,7 @@ export default function ChatRoom() {
     onGroupDeletedRef,
     onReadRef,
     onGroupKeyReadyRef,
+    onGroupKeyRequestedRef,
     onMemberRemovedRef,
     onTypingRef,
   } = useWebSocket(groupId);
@@ -305,6 +308,39 @@ export default function ChatRoom() {
   useEffect(() => {
     onGroupKeyReadyRef.current = () => retryGroupKey();
   }, [onGroupKeyReadyRef, retryGroupKey]);
+
+  // Someone else's browser lost its copy of the group key (e.g. they
+  // cleared site data) and asked for it back via requestGroupKeyAccess. If
+  // I already hold the decrypted key and I'm currently connected here,
+  // re-share it with their (new) public key right away — no need for them
+  // to wait until I happen to reopen this group myself.
+  useEffect(() => {
+    onGroupKeyRequestedRef.current = (requesterId) => {
+      if (!groupKey || !group || !groupId || requesterId === profile?.id)
+        return;
+      const requester = group.members.find((m) => m.userId === requesterId);
+      if (!requester?.publicKey) return;
+      shareGroupKeyWithMember({
+        groupId,
+        groupKey,
+        memberUserId: requester.userId,
+        memberPublicKey: requester.publicKey,
+        setGroupKey: (args) => setGroupKey.mutateAsync(args),
+      }).then(() => {
+        queryClient.invalidateQueries({
+          queryKey: getGetGroupQueryKey(groupId),
+        });
+      });
+    };
+  }, [
+    onGroupKeyRequestedRef,
+    groupKey,
+    group,
+    groupId,
+    profile?.id,
+    setGroupKey,
+    queryClient,
+  ]);
 
   // Someone left, or was removed by the creator: if it was me, leave the
   // page; otherwise just drop them from the cached member list live.
@@ -1075,16 +1111,25 @@ export default function ChatRoom() {
             </DialogContent>
           </Dialog>
           {groupKeyStatus === "ready" && (
-            <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
               <Lock className="w-3.5 h-3.5" />
-              Encrypted
+              <span className="hidden sm:inline">Encrypted</span>
             </div>
           )}
           {groupKeyStatus === "missing" && (
-            <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full">
+            <button
+              type="button"
+              onClick={() => {
+                retryGroupKey();
+                requestGroupKeyAccess.mutate({ groupId: groupId! });
+              }}
+              className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors px-2.5 py-1 rounded-full"
+            >
               <ShieldAlert className="w-3.5 h-3.5" />
-              Waiting for access
-            </div>
+              <span className="hidden sm:inline">
+                Waiting for access — tap to retry
+              </span>
+            </button>
           )}
         </div>
 
@@ -1194,6 +1239,33 @@ export default function ChatRoom() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6" ref={scrollRef}>
         <div className="max-w-3xl mx-auto space-y-6">
+          {groupKeyStatus === "missing" && (messages?.length ?? 0) > 0 && (
+            <div className="flex flex-col sm:flex-row items-center gap-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl px-4 py-3 text-sm">
+              <ShieldAlert className="w-5 h-5 flex-shrink-0" />
+              <div className="flex-1 text-center sm:text-left">
+                This browser lost access to this group's encryption key — likely
+                from clearing site data. Messages will unlock automatically once
+                another member with access opens this group, or you can nudge
+                them now.
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-full flex-shrink-0 bg-white"
+                disabled={requestGroupKeyAccess.isPending}
+                onClick={() => {
+                  requestGroupKeyAccess.mutate({ groupId: groupId! });
+                  toast({
+                    title: "Request sent",
+                    description:
+                      "Asking other members who are online right now.",
+                  });
+                }}
+              >
+                Restore access
+              </Button>
+            </div>
+          )}
           {messages?.length === 0 ? (
             <div className="text-center py-20 text-muted-foreground italic font-serif">
               It's quiet here. Send the first message to {group.name}!
@@ -1341,6 +1413,7 @@ export default function ChatRoom() {
                             !!decrypted[msg.id] ||
                             !isEncryptedPayload(msg.content)
                           }
+                          keyMissing={groupKeyStatus === "missing"}
                         />
                       </div>
                     ) : msg.type === "voice" ? (
@@ -1353,6 +1426,7 @@ export default function ChatRoom() {
                             !!decrypted[msg.id] ||
                             !isEncryptedPayload(msg.content)
                           }
+                          keyMissing={groupKeyStatus === "missing"}
                         />
                       </div>
                     ) : editingMessageId === msg.id ? (
@@ -1400,7 +1474,9 @@ export default function ChatRoom() {
                       >
                         {isEncryptedPayload(msg.content)
                           ? decrypted[msg.id] === undefined
-                            ? "🔒 Decrypting…"
+                            ? groupKeyStatus === "missing"
+                              ? "🔒 Waiting for access to decrypt"
+                              : "🔒 Decrypting…"
                             : renderContentWithMentions(
                                 decrypted[msg.id] ?? "",
                                 group.members,
@@ -1734,6 +1810,7 @@ function FileBubble({
   fileSize,
   url,
   ready,
+  keyMissing,
 }: {
   isMe: boolean;
   fileName?: string | null;
@@ -1741,6 +1818,7 @@ function FileBubble({
   fileSize?: number | null;
   url?: string;
   ready: boolean;
+  keyMissing?: boolean;
 }) {
   const isImage = !!mimeType?.startsWith("image/");
   const sizeLabel =
@@ -1756,7 +1834,8 @@ function FileBubble({
         className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-2 ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-white border border-border text-foreground rounded-tl-sm"}`}
       >
         <FileText className="w-4 h-4" />
-        {fileName ?? "File"} — 🔒 Decrypting…
+        {fileName ?? "File"} —{" "}
+        {keyMissing ? "🔒 Waiting for access" : "🔒 Decrypting…"}
       </div>
     );
   }
@@ -1804,11 +1883,13 @@ function VoiceBubble({
   durationSeconds,
   url,
   ready,
+  keyMissing,
 }: {
   isMe: boolean;
   durationSeconds?: number | null;
   url?: string;
   ready: boolean;
+  keyMissing?: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -1820,7 +1901,8 @@ function VoiceBubble({
         className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-2 ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-white border border-border text-foreground rounded-tl-sm"}`}
       >
         <Mic className="w-4 h-4" />
-        Voice message — 🔒 Decrypting…
+        Voice message —{" "}
+        {keyMissing ? "🔒 Waiting for access" : "🔒 Decrypting…"}
       </div>
     );
   }

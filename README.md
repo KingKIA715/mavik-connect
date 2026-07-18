@@ -1,72 +1,75 @@
-# Reply/Quote, Voice Messages, @Mentions — implementation
+# Fix: messages stuck on "Decrypting…" forever after clearing browser data
 
-All three features, implemented against your actual repo (cloned fresh from
-GitHub) and verified with a full `pnpm run typecheck` across all 9 workspace
-packages — clean, no errors.
+Verified with a clean `pnpm run typecheck` (all 9 workspace projects) and a
+successful production build.
 
-## What's in here
+## Root cause
 
-Files are laid out under the same paths as your repo, so you can copy them
-straight over. `hand-written-changes.diff` is a unified diff of everything
-I wrote by hand (schema, OpenAPI, routes, frontend) — the codegen output
-(`lib/api-zod/**/generated`, `lib/api-client-react/**/generated`) is included
-as full files rather than a diff since it's machine-generated and you'll want
-to just overwrite + re-run `pnpm --filter @workspace/api-spec run codegen`
-yourself anyway once the OpenAPI spec is in place, to be sure it's in sync.
+Each user's private encryption key lives only in that browser's
+`localStorage` — never backed up anywhere, by design (that's what makes it
+end-to-end). Clearing site data / browsing history wipes it. The app then
+generates a brand-new keypair, but the group/DM key stored server-side was
+wrapped for the *old* public key, so it can't be unwrapped anymore. A
+recovery mechanism already existed (the other participant re-shares the key
+when they reopen that conversation), but only fires if they happen to do
+that — there was no way to prompt them, and no way for the affected user to
+tell what was even happening.
 
-### 1. DB schema (`lib/db/src/schema/messages.ts`, `dms.ts`)
-- `replyToId` — self-referencing FK (`on delete set null`), same column on
-  both `messages` and `dm_messages`.
-- `durationSeconds` — nullable int, for voice playback length.
-- `mentionedUserIds` — plaintext `text[]` on `messages` only (mentions don't
-  make sense in a 1:1 DM). This is deliberately plaintext alongside the
-  E2E-encrypted `content`, same tradeoff you already made for reactions —
-  the server needs to know *who* was tagged to route/highlight it, but never
-  sees *what* was said.
+**The bug making it worse:** the "Waiting for access" status pill that would
+explain this was coded `hidden sm:flex` — invisible below the `sm` breakpoint,
+i.e. **invisible on every phone**. So on mobile, people just saw messages
+stuck on "🔒 Decrypting…" forever with zero explanation — exactly what the
+screenshot showed.
 
-You'll need to run your usual `drizzle-kit push` (or generate+run a
-migration, whichever this project uses) against a real database — I didn't
-have one available in this sandbox to push against.
+## What changed
 
-### 2. OpenAPI spec (`lib/api-spec/openapi.yaml`)
-- `type` enum extended to `[text, file, voice]` on `Message`/`DmMessage`.
-- New `MessageReplyPreview` schema — a denormalized snapshot (id, sender,
-  content, type, fileName, deletedAt) so a reply can render a quoted snippet
-  even if the original message isn't in the currently-loaded page.
-- `replyToId`/`replyTo`, `durationSeconds`, `mentionedUserIds` added to the
-  request/response schemas as appropriate.
+**Status pill (`ChatRoom.tsx`, `DmThread.tsx`)**
+- No longer hidden on mobile — icon always shows; the text label collapses
+  to icon-only below `sm` to save space, rather than disappearing entirely.
+- The "missing" pill is now a tappable button: tapping it both retries
+  fetching the key and requests a re-share (see below).
 
-### 3. Backend (`artifacts/api-server`)
-- `lib/groupAccess.ts`: added `getGroupMemberIds` to validate @mention
-  targets are actually current group members (invalid IDs are silently
-  dropped, not trusted as-is).
-- `routes/messages.ts` / `routes/dms.ts`: send/list/edit/delete/reactions
-  all thread through `replyToId` (validated against the same group/thread),
-  `durationSeconds`, and — groups only — `mentionedUserIds`. A batched
-  helper (`getReplyPreviewsByReplyToId` / `getDmReplyPreviewsByReplyToId`)
-  fetches reply previews in one extra query per page, same pattern as the
-  existing reactions batching.
-- No changes needed to the WS hub — it just rebroadcasts the same message
-  payload, so new fields ride along automatically.
+**Honest per-message state**
+- Previously every undecrypted message showed "🔒 Decrypting…" forever,
+  which reads as "in progress" even when it's actually stuck waiting on
+  another person. Now: if the key is confirmed missing, messages/files/voice
+  bubbles say "🔒 Waiting for access" instead — same idea, but doesn't imply
+  something's actively about to resolve on its own.
+- A banner now appears above the message list itself (not just a small
+  header pill) when the key is missing, explaining what happened in plain
+  language, with a "Restore access" button.
 
-### 4. Frontend (`artifacts/mavik-connect`)
-- **Reply/Quote**: hover a message to see a reply icon; picking it shows a
-  preview bar above the composer, and sent replies render a quoted snippet
-  (tap it to scroll to the original) above the bubble.
-- **Voice messages**: mic button records via `MediaRecorder` (capped at 2
-  minutes), sends through the exact same `encryptFile` path as file
-  attachments with `type: "voice"` — new `VoiceBubble` component with
-  play/pause and a progress bar.
-- **@Mentions** (groups only): typing `@` opens an autocomplete of current
-  members; selecting one inserts `@Name`. Mentioned names render highlighted
-  in the sent message (your own mentions get a distinct highlight color).
-  DMs skip this — only two people in the thread, so tagging is redundant.
+**New: request-key-access endpoint (backend + WS)**
+- `POST /groups/{groupId}/keys/request` and `POST /dms/{threadId}/keys/request`
+  — the affected user's client calls this (via the pill or the banner
+  button). It broadcasts a `group-key-requested` / `dm-key-requested` event
+  over the existing group/thread WebSocket channel.
+- Any other member/participant currently connected to that same
+  conversation, who already holds the decrypted key, responds automatically
+  by re-wrapping and re-sharing it for the requester — same re-share
+  function already used elsewhere, just triggered on-demand instead of only
+  "whenever they next happen to open this chat."
+- Rate-limited (5/min per user) since it's a WS broadcast, not free.
 
-## Not done / left for you
-- No DB migration was run — no live Postgres in this sandbox.
-- Push notification copy for "you were mentioned" — the data (`mentionedUserIds`)
-  is there, but I didn't touch `routes/activity.ts`; wire it in if you want a
-  distinct mention notification vs. a regular new-message one.
-- Waveform visualization on voice messages — shipped a simple progress bar
-  instead; a real waveform needs decoding audio samples client-side, which
-  felt like scope creep for this pass.
+## What this does and doesn't fix
+
+**Fixes:** the specific case in the screenshot — stuck forever with no
+explanation, and a slow/unreliable recovery path. Now there's a clear
+message, an honest status, and an on-demand nudge that resolves things in
+seconds if the other person is currently in that conversation (which, for an
+active family chat, is often true).
+
+**Doesn't fix:** if the other participant *never* opens that conversation
+after your key changes, you're still stuck — the request only reaches
+someone who's connected to that specific group/thread channel right now,
+not "anywhere in the app." A fully general fix (reaching someone regardless
+of what page they're on) would need a new always-on per-user WebSocket
+channel, which is a bigger infrastructure change I didn't make here — happy
+to scope that separately if this still isn't enough in practice.
+
+**Also out of scope, worth knowing about:** the actual root fix — not
+losing the private key at all — would mean backing it up somewhere more
+durable than localStorage (e.g. a passphrase-protected export, or
+server-side backup encrypted with something only the user knows). That's a
+real security-model change, not a quick patch, so I didn't make that call
+unilaterally. Worth a conversation if this keeps coming up.

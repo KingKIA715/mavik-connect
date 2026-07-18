@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Message, DmMessage } from "@workspace/api-client-react";
 
-type WsMessage = 
+type WsMessage =
   | { type: "message"; message: Message }
   | { type: "message-updated"; message: Message }
   | { type: "presence"; userIds: string[] }
@@ -10,6 +10,7 @@ type WsMessage =
   | { type: "group-deleted"; groupId: string }
   | { type: "read"; userId: string; lastReadAt: string }
   | { type: "group-key-ready" }
+  | { type: "group-key-requested"; requesterId: string }
   | { type: "member-removed"; userId: string }
   | { type: "typing"; userId: string };
 
@@ -17,14 +18,19 @@ export function useWebSocket(groupId?: string) {
   const [isConnected, setIsConnected] = useState(false);
   const [presence, setPresence] = useState<string[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
-  
+
   // Callbacks for different message types
   const onMessageRef = useRef<((msg: Message) => void) | null>(null);
   const onMessageUpdateRef = useRef<((msg: Message) => void) | null>(null);
   const onSignalRef = useRef<((from: string, data: any) => void) | null>(null);
   const onGroupDeletedRef = useRef<(() => void) | null>(null);
-  const onReadRef = useRef<((userId: string, lastReadAt: string) => void) | null>(null);
+  const onReadRef = useRef<
+    ((userId: string, lastReadAt: string) => void) | null
+  >(null);
   const onGroupKeyReadyRef = useRef<(() => void) | null>(null);
+  const onGroupKeyRequestedRef = useRef<((requesterId: string) => void) | null>(
+    null,
+  );
   const onMemberRemovedRef = useRef<((userId: string) => void) | null>(null);
   const onTypingRef = useRef<((userId: string) => void) | null>(null);
 
@@ -32,8 +38,11 @@ export function useWebSocket(groupId?: string) {
     if (!groupId) return;
 
     // Connect to standard /api/ws
-    const wsUrl = new URL(`${import.meta.env.BASE_URL}api/ws`, window.location.href);
-    wsUrl.protocol = wsUrl.protocol.replace('http', 'ws');
+    const wsUrl = new URL(
+      `${import.meta.env.BASE_URL}api/ws`,
+      window.location.href,
+    );
+    wsUrl.protocol = wsUrl.protocol.replace("http", "ws");
     wsUrl.searchParams.set("groupId", groupId);
 
     const ws = new WebSocket(wsUrl.toString());
@@ -41,13 +50,16 @@ export function useWebSocket(groupId?: string) {
 
     ws.onopen = () => setIsConnected(true);
     ws.onclose = () => setIsConnected(false);
-    
+
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as WsMessage;
         if (data.type === "message" && onMessageRef.current) {
           onMessageRef.current(data.message);
-        } else if (data.type === "message-updated" && onMessageUpdateRef.current) {
+        } else if (
+          data.type === "message-updated" &&
+          onMessageUpdateRef.current
+        ) {
           onMessageUpdateRef.current(data.message);
         } else if (data.type === "presence") {
           setPresence(data.userIds);
@@ -57,9 +69,20 @@ export function useWebSocket(groupId?: string) {
           onGroupDeletedRef.current();
         } else if (data.type === "read" && onReadRef.current) {
           onReadRef.current(data.userId, data.lastReadAt);
-        } else if (data.type === "group-key-ready" && onGroupKeyReadyRef.current) {
+        } else if (
+          data.type === "group-key-ready" &&
+          onGroupKeyReadyRef.current
+        ) {
           onGroupKeyReadyRef.current();
-        } else if (data.type === "member-removed" && onMemberRemovedRef.current) {
+        } else if (
+          data.type === "group-key-requested" &&
+          onGroupKeyRequestedRef.current
+        ) {
+          onGroupKeyRequestedRef.current(data.requesterId);
+        } else if (
+          data.type === "member-removed" &&
+          onMemberRemovedRef.current
+        ) {
           onMemberRemovedRef.current(data.userId);
         } else if (data.type === "typing" && onTypingRef.current) {
           onTypingRef.current(data.userId);
@@ -92,8 +115,9 @@ export function useWebSocket(groupId?: string) {
     onGroupDeletedRef,
     onReadRef,
     onGroupKeyReadyRef,
+    onGroupKeyRequestedRef,
     onMemberRemovedRef,
-    onTypingRef
+    onTypingRef,
   };
 }
 
@@ -104,6 +128,7 @@ type DmWsMessage =
   | { type: "signal-broadcast"; data: any }
   | { type: "read"; userId: string; lastReadAt: string }
   | { type: "dm-key-ready" }
+  | { type: "dm-key-requested"; requesterId: string }
   | { type: "dm-thread-deleted"; threadId: string }
   | { type: "typing"; userId: string };
 
@@ -118,16 +143,24 @@ export function useThreadWebSocket(threadId?: string) {
   const onMessageRef = useRef<((msg: DmMessage) => void) | null>(null);
   const onMessageUpdateRef = useRef<((msg: DmMessage) => void) | null>(null);
   const onSignalRef = useRef<((from: string, data: any) => void) | null>(null);
-  const onReadRef = useRef<((userId: string, lastReadAt: string) => void) | null>(null);
+  const onReadRef = useRef<
+    ((userId: string, lastReadAt: string) => void) | null
+  >(null);
   const onDmKeyReadyRef = useRef<(() => void) | null>(null);
+  const onDmKeyRequestedRef = useRef<((requesterId: string) => void) | null>(
+    null,
+  );
   const onDmThreadDeletedRef = useRef<(() => void) | null>(null);
   const onTypingRef = useRef<((userId: string) => void) | null>(null);
 
   useEffect(() => {
     if (!threadId) return;
 
-    const wsUrl = new URL(`${import.meta.env.BASE_URL}api/ws`, window.location.href);
-    wsUrl.protocol = wsUrl.protocol.replace('http', 'ws');
+    const wsUrl = new URL(
+      `${import.meta.env.BASE_URL}api/ws`,
+      window.location.href,
+    );
+    wsUrl.protocol = wsUrl.protocol.replace("http", "ws");
     wsUrl.searchParams.set("threadId", threadId);
 
     const ws = new WebSocket(wsUrl.toString());
@@ -141,7 +174,10 @@ export function useThreadWebSocket(threadId?: string) {
         const data = JSON.parse(event.data) as DmWsMessage;
         if (data.type === "message" && onMessageRef.current) {
           onMessageRef.current(data.message);
-        } else if (data.type === "message-updated" && onMessageUpdateRef.current) {
+        } else if (
+          data.type === "message-updated" &&
+          onMessageUpdateRef.current
+        ) {
           onMessageUpdateRef.current(data.message);
         } else if (data.type === "signal" && onSignalRef.current) {
           onSignalRef.current(data.from, data.data);
@@ -149,7 +185,15 @@ export function useThreadWebSocket(threadId?: string) {
           onReadRef.current(data.userId, data.lastReadAt);
         } else if (data.type === "dm-key-ready" && onDmKeyReadyRef.current) {
           onDmKeyReadyRef.current();
-        } else if (data.type === "dm-thread-deleted" && onDmThreadDeletedRef.current) {
+        } else if (
+          data.type === "dm-key-requested" &&
+          onDmKeyRequestedRef.current
+        ) {
+          onDmKeyRequestedRef.current(data.requesterId);
+        } else if (
+          data.type === "dm-thread-deleted" &&
+          onDmThreadDeletedRef.current
+        ) {
           onDmThreadDeletedRef.current();
         } else if (data.type === "typing" && onTypingRef.current) {
           onTypingRef.current(data.userId);
@@ -172,5 +216,16 @@ export function useThreadWebSocket(threadId?: string) {
     }
   }, []);
 
-  return { isConnected, sendMessage, onMessageRef, onMessageUpdateRef, onSignalRef, onReadRef, onDmKeyReadyRef, onDmThreadDeletedRef, onTypingRef };
+  return {
+    isConnected,
+    sendMessage,
+    onMessageRef,
+    onMessageUpdateRef,
+    onSignalRef,
+    onReadRef,
+    onDmKeyReadyRef,
+    onDmKeyRequestedRef,
+    onDmThreadDeletedRef,
+    onTypingRef,
+  };
 }

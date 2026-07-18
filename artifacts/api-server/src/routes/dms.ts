@@ -27,7 +27,10 @@ import {
   ToggleDmMessageReactionResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
-import { messageSendRateLimit } from "../middlewares/rateLimit";
+import {
+  messageSendRateLimit,
+  keyRequestRateLimit,
+} from "../middlewares/rateLimit";
 import {
   parseThreadId,
   isThreadParticipant,
@@ -562,6 +565,35 @@ router.post("/dms/:threadId/keys", async (req, res): Promise<void> => {
     }),
   );
 });
+
+router.post(
+  "/dms/:threadId/keys/request",
+  keyRequestRateLimit,
+  async (req, res): Promise<void> => {
+    const threadId = parseThreadId(req.params.threadId);
+    if (threadId === null) {
+      res.status(404).json({ error: "Thread not found" });
+      return;
+    }
+
+    const requesterId = req.userId!;
+    const requesterIsParticipant = await isThreadParticipant(
+      threadId,
+      requesterId,
+    );
+    if (!requesterIsParticipant) {
+      res.status(404).json({ error: "Thread not found" });
+      return;
+    }
+
+    // Best-effort nudge: if the other participant is currently connected to
+    // this thread and already holds the decrypted key, their client
+    // re-shares it for requesterId. No-op if they're not currently online.
+    broadcastToThread(threadId, { type: "dm-key-requested", requesterId });
+
+    res.status(202).end();
+  },
+);
 
 router.get("/dms/:threadId/messages", async (req, res): Promise<void> => {
   const threadId = parseThreadId(req.params.threadId);
