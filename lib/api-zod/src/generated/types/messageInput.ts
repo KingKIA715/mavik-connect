@@ -17,4 +17,9 @@ export interface MessageInput {
   mimeType?: string | null;
   /** @nullable */
   fileSize?: number | null;
+  /** @nullable */
+  durationSeconds?: number | null;
+  /** @nullable */
+  replyToId?: string | null;
+  mentionedUserIds?: string[];
 }

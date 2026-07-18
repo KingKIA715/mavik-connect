@@ -125,12 +125,40 @@ export interface MessageReaction {
   userIds: string[];
 }
 
+export type MessageReplyPreviewType = typeof MessageReplyPreviewType[keyof typeof MessageReplyPreviewType];
+
+
+export const MessageReplyPreviewType = {
+  text: 'text',
+  file: 'file',
+  voice: 'voice',
+} as const;
+
+/**
+ * A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.
+ */
+export interface MessageReplyPreview {
+  id: string;
+  senderId: string;
+  senderName: string;
+  content: string;
+  type: MessageReplyPreviewType;
+  /** @nullable */
+  fileName?: string | null;
+  /**
+     * If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.
+     * @nullable
+     */
+  deletedAt: string | null;
+}
+
 export type MessageType = typeof MessageType[keyof typeof MessageType];
 
 
 export const MessageType = {
   text: 'text',
   file: 'file',
+  voice: 'voice',
 } as const;
 
 export interface Message {
@@ -148,6 +176,16 @@ export interface Message {
   mimeType?: string | null;
   /** @nullable */
   fileSize?: number | null;
+  /**
+     * Playback duration in seconds, for voice messages.
+     * @nullable
+     */
+  durationSeconds?: number | null;
+  /** @nullable */
+  replyToId?: string | null;
+  replyTo?: MessageReplyPreview | null;
+  /** Group member user IDs tagged with @mentions in this message. */
+  mentionedUserIds: string[];
   createdAt: string;
   /** @nullable */
   editedAt?: string | null;
@@ -162,6 +200,7 @@ export type MessageInputType = typeof MessageInputType[keyof typeof MessageInput
 export const MessageInputType = {
   text: 'text',
   file: 'file',
+  voice: 'voice',
 } as const;
 
 export interface MessageInput {
@@ -174,6 +213,11 @@ export interface MessageInput {
   mimeType?: string | null;
   /** @nullable */
   fileSize?: number | null;
+  /** @nullable */
+  durationSeconds?: number | null;
+  /** @nullable */
+  replyToId?: string | null;
+  mentionedUserIds?: string[];
 }
 
 export interface MessageEditInput {
@@ -236,6 +280,7 @@ export type DmMessageType = typeof DmMessageType[keyof typeof DmMessageType];
 export const DmMessageType = {
   text: 'text',
   file: 'file',
+  voice: 'voice',
 } as const;
 
 export interface DmMessage {
@@ -253,6 +298,14 @@ export interface DmMessage {
   mimeType?: string | null;
   /** @nullable */
   fileSize?: number | null;
+  /**
+     * Playback duration in seconds, for voice messages.
+     * @nullable
+     */
+  durationSeconds?: number | null;
+  /** @nullable */
+  replyToId?: string | null;
+  replyTo?: MessageReplyPreview | null;
   createdAt: string;
   /** @nullable */
   editedAt?: string | null;
@@ -267,6 +320,7 @@ export type DmMessageInputType = typeof DmMessageInputType[keyof typeof DmMessag
 export const DmMessageInputType = {
   text: 'text',
   file: 'file',
+  voice: 'voice',
 } as const;
 
 export interface DmMessageInput {
@@ -279,6 +333,10 @@ export interface DmMessageInput {
   mimeType?: string | null;
   /** @nullable */
   fileSize?: number | null;
+  /** @nullable */
+  durationSeconds?: number | null;
+  /** @nullable */
+  replyToId?: string | null;
 }
 
 export interface DmMessageEditInput {

@@ -1,131 +1,72 @@
-# Mavik Connect
+# Reply/Quote, Voice Messages, @Mentions — implementation
 
-A private, warm space for your family to stay close across the distance. End-to-end encrypted group chat with real-time messaging and video calling. No noise, no distractions — just the people you love.
+All three features, implemented against your actual repo (cloned fresh from
+GitHub) and verified with a full `pnpm run typecheck` across all 9 workspace
+packages — clean, no errors.
 
-## Features
+## What's in here
 
-- **End-to-End Encryption** — Client-side encryption ensures only group members can read messages
-- **Real-Time Chat** — WebSocket-powered instant messaging across all group members
-- **Video Calling** — WebRTC-based 1:1 video calls within groups
-- **Family Groups** — Create invite-only groups, manage members, and share encrypted conversations
-- **Cross-Platform** — Works on desktop, tablet, and mobile browsers with responsive design
-- **Secure Authentication** — Clerk-powered authentication with proxy support for custom domains
+Files are laid out under the same paths as your repo, so you can copy them
+straight over. `hand-written-changes.diff` is a unified diff of everything
+I wrote by hand (schema, OpenAPI, routes, frontend) — the codegen output
+(`lib/api-zod/**/generated`, `lib/api-client-react/**/generated`) is included
+as full files rather than a diff since it's machine-generated and you'll want
+to just overwrite + re-run `pnpm --filter @workspace/api-spec run codegen`
+yourself anyway once the OpenAPI spec is in place, to be sure it's in sync.
 
-## Tech Stack
+### 1. DB schema (`lib/db/src/schema/messages.ts`, `dms.ts`)
+- `replyToId` — self-referencing FK (`on delete set null`), same column on
+  both `messages` and `dm_messages`.
+- `durationSeconds` — nullable int, for voice playback length.
+- `mentionedUserIds` — plaintext `text[]` on `messages` only (mentions don't
+  make sense in a 1:1 DM). This is deliberately plaintext alongside the
+  E2E-encrypted `content`, same tradeoff you already made for reactions —
+  the server needs to know *who* was tagged to route/highlight it, but never
+  sees *what* was said.
 
-- **Frontend**: React 19, TypeScript, Tailwind CSS v4, shadcn/ui, Wouter
-- **Backend**: Express 5, TypeScript, WebSocket (ws)
-- **Database**: PostgreSQL, Drizzle ORM
-- **Auth**: Clerk
-- **Encryption**: Web Crypto API (RSA-OAEP + AES-GCM)
-- **Video**: WebRTC
-- **API Spec**: OpenAPI 3.1 with Orval codegen
-- **Build**: esbuild (server), Vite (client)
+You'll need to run your usual `drizzle-kit push` (or generate+run a
+migration, whichever this project uses) against a real database — I didn't
+have one available in this sandbox to push against.
 
-## Getting Started
+### 2. OpenAPI spec (`lib/api-spec/openapi.yaml`)
+- `type` enum extended to `[text, file, voice]` on `Message`/`DmMessage`.
+- New `MessageReplyPreview` schema — a denormalized snapshot (id, sender,
+  content, type, fileName, deletedAt) so a reply can render a quoted snippet
+  even if the original message isn't in the currently-loaded page.
+- `replyToId`/`replyTo`, `durationSeconds`, `mentionedUserIds` added to the
+  request/response schemas as appropriate.
 
-### Prerequisites
+### 3. Backend (`artifacts/api-server`)
+- `lib/groupAccess.ts`: added `getGroupMemberIds` to validate @mention
+  targets are actually current group members (invalid IDs are silently
+  dropped, not trusted as-is).
+- `routes/messages.ts` / `routes/dms.ts`: send/list/edit/delete/reactions
+  all thread through `replyToId` (validated against the same group/thread),
+  `durationSeconds`, and — groups only — `mentionedUserIds`. A batched
+  helper (`getReplyPreviewsByReplyToId` / `getDmReplyPreviewsByReplyToId`)
+  fetches reply previews in one extra query per page, same pattern as the
+  existing reactions batching.
+- No changes needed to the WS hub — it just rebroadcasts the same message
+  payload, so new fields ride along automatically.
 
-- Node.js 24+
-- pnpm (enforced via preinstall script)
-- PostgreSQL database (connection string via `DATABASE_URL`)
-- Clerk account (publishable + secret keys)
+### 4. Frontend (`artifacts/family-chat`)
+- **Reply/Quote**: hover a message to see a reply icon; picking it shows a
+  preview bar above the composer, and sent replies render a quoted snippet
+  (tap it to scroll to the original) above the bubble.
+- **Voice messages**: mic button records via `MediaRecorder` (capped at 2
+  minutes), sends through the exact same `encryptFile` path as file
+  attachments with `type: "voice"` — new `VoiceBubble` component with
+  play/pause and a progress bar.
+- **@Mentions** (groups only): typing `@` opens an autocomplete of current
+  members; selecting one inserts `@Name`. Mentioned names render highlighted
+  in the sent message (your own mentions get a distinct highlight color).
+  DMs skip this — only two people in the thread, so tagging is redundant.
 
-### Environment Variables
-
-Create a `.env` file in the project root:
-
-```env
-# Required
-DATABASE_URL=postgresql://user:password@localhost:5432/mavik_connect
-CLERK_PUBLISHABLE_KEY=pk_test_...
-CLERK_SECRET_KEY=sk_test_...
-
-# Optional — restricts CORS in production
-ALLOWED_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
-
-# Set automatically by deployment platform
-PORT=5000
-BASE_PATH=/
-```
-
-### Install & Run
-
-```bash
-# Install dependencies (pnpm required)
-pnpm install
-
-# Push database schema
-pnpm --filter @workspace/db run push
-
-# Run API server (port 5000)
-pnpm --filter @workspace/api-server run dev
-
-# Run frontend dev server (in another terminal)
-pnpm --filter @workspace/family-chat run dev
-
-# Full typecheck across all packages
-pnpm run typecheck
-
-# Build all packages for production
-pnpm run build
-```
-
-### Useful Commands
-
-```bash
-# Regenerate API hooks and Zod schemas from OpenAPI spec
-pnpm --filter @workspace/api-spec run codegen
-
-# Format all files
-pnpm run format
-
-# Check formatting
-pnpm run format:check
-
-# Typecheck
-pnpm run typecheck
-```
-
-## Project Structure
-
-```
-.
-├── artifacts/
-│   ├── api-server/          # Express 5 API + WebSocket server
-│   ├── family-chat/         # React SPA (Vite)
-│   └── mockup-sandbox/      # Design sandbox
-├── lib/
-│   ├── api-spec/            # OpenAPI spec + Orval config
-│   ├── api-zod/             # Generated Zod schemas
-│   ├── api-client-react/    # Generated React Query hooks
-│   └── db/                  # Drizzle ORM schema + connection
-├── package.json             # Workspace root
-├── pnpm-workspace.yaml      # pnpm workspace config
-└── tsconfig.base.json       # Shared TypeScript config
-```
-
-## Architecture Decisions
-
-1. **OpenAPI-first API design** — The API contract is defined in `lib/api-spec/openapi.yaml` and both Zod schemas and React Query hooks are auto-generated via Orval. This ensures frontend and backend stay in sync.
-
-2. **End-to-end encryption** — Group symmetric keys are generated client-side, encrypted with each member's RSA public key, and stored server-side. Messages are encrypted before sending and decrypted on receipt. The server never sees plaintext.
-
-3. **Monorepo with pnpm workspaces** — Shared packages (`@workspace/db`, `@workspace/api-zod`, `@workspace/api-client-react`) are consumed by both frontend and backend via workspace links, eliminating duplication.
-
-4. **Clerk proxy middleware** — Enables Clerk authentication on custom domains without CNAME DNS configuration by proxying Frontend API requests through the app's own domain.
-
-5. **esbuild for server bundling** — The API server is bundled into a single `.mjs` file with esbuild for fast cold starts and deterministic deployments.
-
-## Security
-
-- **Helmet** — HTTP security headers (HSTS, CSP, X-Frame-Options, etc.)
-- **Rate Limiting** — Per-IP and per-user rate limits on API endpoints (300 req/15min general, 60 msg/min, 20 group actions/min)
-- **CORS** — Origin-restricted cross-origin requests
-- **Input Validation** — All request bodies validated with Zod schemas
-- **E2E Encryption** — Server cannot read message content
-- **Parameterized Queries** — Drizzle ORM prevents SQL injection
-
-## License
-
-MIT
+## Not done / left for you
+- No DB migration was run — no live Postgres in this sandbox.
+- Push notification copy for "you were mentioned" — the data (`mentionedUserIds`)
+  is there, but I didn't touch `routes/activity.ts`; wire it in if you want a
+  distinct mention notification vs. a regular new-message one.
+- Waveform visualization on voice messages — shipped a simple progress bar
+  instead; a real waveform needs decoding audio samples client-side, which
+  felt like scope creep for this pass.

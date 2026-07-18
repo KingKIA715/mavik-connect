@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type MessageType = typeof MessageType[keyof typeof MessageType];
+export type MessageReplyPreviewType = typeof MessageReplyPreviewType[keyof typeof MessageReplyPreviewType];
 
 
-export const MessageType = {
+export const MessageReplyPreviewType = {
   text: 'text',
   file: 'file',
   voice: 'voice',

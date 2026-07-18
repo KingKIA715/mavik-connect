@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.2.0
  */
 import type { MessageReaction } from './messageReaction';
+import type { MessageReplyPreview } from './messageReplyPreview';
 import type { MessageType } from './messageType';
 
 export interface Message {
@@ -23,6 +24,16 @@ export interface Message {
   mimeType?: string | null;
   /** @nullable */
   fileSize?: number | null;
+  /**
+     * Playback duration in seconds, for voice messages.
+     * @nullable
+     */
+  durationSeconds?: number | null;
+  /** @nullable */
+  replyToId?: string | null;
+  replyTo?: MessageReplyPreview | null;
+  /** Group member user IDs tagged with @mentions in this message. */
+  mentionedUserIds: string[];
   createdAt: string;
   /** @nullable */
   editedAt?: string | null;

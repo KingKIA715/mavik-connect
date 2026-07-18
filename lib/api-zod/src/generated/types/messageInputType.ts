@@ -12,4 +12,5 @@ export type MessageInputType = typeof MessageInputType[keyof typeof MessageInput
 export const MessageInputType = {
   text: 'text',
   file: 'file',
+  voice: 'voice',
 } as const;

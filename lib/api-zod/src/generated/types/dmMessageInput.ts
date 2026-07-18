@@ -17,4 +17,8 @@ export interface DmMessageInput {
   mimeType?: string | null;
   /** @nullable */
   fileSize?: number | null;
+  /** @nullable */
+  durationSeconds?: number | null;
+  /** @nullable */
+  replyToId?: string | null;
 }

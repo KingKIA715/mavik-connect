@@ -30,20 +30,62 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Send, Lock, ShieldAlert, Paperclip, Download, FileText, Phone, Video, MoreVertical, Pencil, Trash2, Check, CheckCheck, Search, X, Smile } from "lucide-react";
+import {
+  ArrowLeft,
+  Send,
+  Lock,
+  ShieldAlert,
+  Paperclip,
+  Download,
+  FileText,
+  Phone,
+  Video,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Check,
+  CheckCheck,
+  Search,
+  X,
+  Smile,
+  Reply,
+  Mic,
+  Square,
+  Play,
+  Pause,
+} from "lucide-react";
 import { format } from "date-fns";
 import {
   useEncryption,
   useMyDmKey,
   shareDmKeyWithParticipant,
 } from "@/hooks/use-encryption";
-import { encryptMessage, decryptMessage, encryptFile, decryptFile, isEncryptedPayload } from "@/lib/crypto";
+import {
+  encryptMessage,
+  decryptMessage,
+  encryptFile,
+  decryptFile,
+  isEncryptedPayload,
+} from "@/lib/crypto";
+import type { DmMessage } from "@workspace/api-client-react";
 
 const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB — see ChatRoom.tsx for why
+const MAX_RECORDING_SECONDS = 120;
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+function formatDuration(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = Math.floor(totalSeconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 export default function DmThread() {
   const { threadId } = useParams<{ threadId: string }>();
@@ -52,9 +94,16 @@ export default function DmThread() {
   const { data: thread, isLoading: threadLoading } = useGetDmThread(threadId!, {
     query: { enabled: !!threadId, queryKey: getGetDmThreadQueryKey(threadId!) },
   });
-  const { data: messages, isLoading: messagesLoading } = useListDmMessages(threadId!, undefined, {
-    query: { enabled: !!threadId, queryKey: getListDmMessagesQueryKey(threadId!) },
-  });
+  const { data: messages, isLoading: messagesLoading } = useListDmMessages(
+    threadId!,
+    undefined,
+    {
+      query: {
+        enabled: !!threadId,
+        queryKey: getListDmMessagesQueryKey(threadId!),
+      },
+    },
+  );
 
   const sendDmMessage = useSendDmMessage();
   const editDmMessage = useEditDmMessage();
@@ -66,7 +115,11 @@ export default function DmThread() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const identity = useEncryption();
-  const { dmKey, status: dmKeyStatus, retry: retryDmKey } = useMyDmKey(threadId, identity?.privateKey ?? null);
+  const {
+    dmKey,
+    status: dmKeyStatus,
+    retry: retryDmKey,
+  } = useMyDmKey(threadId, identity?.privateKey ?? null);
 
   const [content, setContent] = useState("");
   const [decrypted, setDecrypted] = useState<Record<string, string>>({});
@@ -74,13 +127,30 @@ export default function DmThread() {
   const [isUploading, setIsUploading] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
-  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
-  const [isDeleteThreadConfirmOpen, setIsDeleteThreadConfirmOpen] = useState(false);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(
+    null,
+  );
+  const [isDeleteThreadConfirmOpen, setIsDeleteThreadConfirmOpen] =
+    useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isOtherTyping, setIsOtherTyping] = useState(false);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const lastTypingSentAtRef = useRef(0);
+  const [replyingTo, setReplyingTo] = useState<DmMessage | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [isSendingVoice, setIsSendingVoice] = useState(false);
+  const contentInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingSecondsRef = useRef(0);
+  useEffect(() => {
+    recordingSecondsRef.current = recordingSeconds;
+  }, [recordingSeconds]);
 
   // Messages are end-to-end encrypted — the server only ever sees
   // ciphertext, so search has to run client-side over what's already been
@@ -97,11 +167,21 @@ export default function DmThread() {
   // Read receipts: the other participant's last-read timestamp, seeded from
   // the thread fetch and kept live via the "read" WS event below so a
   // "Seen" checkmark appears on my last message without needing a reload.
-  const [otherUserLastReadAt, setOtherUserLastReadAt] = useState<string | null>(null);
+  const [otherUserLastReadAt, setOtherUserLastReadAt] = useState<string | null>(
+    null,
+  );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { sendMessage, onMessageRef, onMessageUpdateRef, onReadRef, onDmKeyReadyRef, onDmThreadDeletedRef, onTypingRef } = useThreadWebSocket(threadId);
+  const {
+    sendMessage,
+    onMessageRef,
+    onMessageUpdateRef,
+    onReadRef,
+    onDmKeyReadyRef,
+    onDmThreadDeletedRef,
+    onTypingRef,
+  } = useThreadWebSocket(threadId);
 
   useEffect(() => {
     if (thread) setOtherUserLastReadAt(thread.otherUserLastReadAt ?? null);
@@ -115,20 +195,26 @@ export default function DmThread() {
 
   useEffect(() => {
     onMessageRef.current = (msg) => {
-      queryClient.setQueryData(getListDmMessagesQueryKey(threadId!), (old: any) => {
-        if (!old) return [msg];
-        if (old.find((m: any) => m.id === msg.id)) return old;
-        return [...old, msg];
-      });
+      queryClient.setQueryData(
+        getListDmMessagesQueryKey(threadId!),
+        (old: any) => {
+          if (!old) return [msg];
+          if (old.find((m: any) => m.id === msg.id)) return old;
+          return [...old, msg];
+        },
+      );
     };
   }, [threadId, queryClient, onMessageRef]);
 
   useEffect(() => {
     onMessageUpdateRef.current = (msg) => {
-      queryClient.setQueryData(getListDmMessagesQueryKey(threadId!), (old: any) => {
-        if (!old) return old;
-        return old.map((m: any) => (m.id === msg.id ? msg : m));
-      });
+      queryClient.setQueryData(
+        getListDmMessagesQueryKey(threadId!),
+        (old: any) => {
+          if (!old) return old;
+          return old.map((m: any) => (m.id === msg.id ? msg : m));
+        },
+      );
     };
   }, [threadId, queryClient, onMessageUpdateRef]);
 
@@ -155,7 +241,10 @@ export default function DmThread() {
   useEffect(() => {
     onDmThreadDeletedRef.current = () => {
       queryClient.invalidateQueries({ queryKey: getListDmThreadsQueryKey() });
-      toast({ title: "Conversation deleted", description: "This conversation no longer exists." });
+      toast({
+        title: "Conversation deleted",
+        description: "This conversation no longer exists.",
+      });
       navigate("/app");
     };
   }, [queryClient, onDmThreadDeletedRef, toast, navigate]);
@@ -167,7 +256,11 @@ export default function DmThread() {
       queryClient.invalidateQueries({ queryKey: getListDmThreadsQueryKey() });
       navigate("/app");
     } catch {
-      toast({ variant: "destructive", title: "Couldn't delete conversation", description: "Please try again." });
+      toast({
+        variant: "destructive",
+        title: "Couldn't delete conversation",
+        description: "Please try again.",
+      });
     } finally {
       setIsDeleteThreadConfirmOpen(false);
     }
@@ -180,7 +273,10 @@ export default function DmThread() {
     onTypingRef.current = () => {
       setIsOtherTyping(true);
       clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => setIsOtherTyping(false), 3000);
+      typingTimeoutRef.current = setTimeout(
+        () => setIsOtherTyping(false),
+        3000,
+      );
     };
   }, [onTypingRef]);
 
@@ -201,10 +297,15 @@ export default function DmThread() {
       { threadId, messageId, data: { emoji } },
       {
         onSuccess: (reactions) => {
-          queryClient.setQueryData(getListDmMessagesQueryKey(threadId), (old: any) => {
-            if (!old) return old;
-            return old.map((m: any) => (m.id === messageId ? { ...m, reactions } : m));
-          });
+          queryClient.setQueryData(
+            getListDmMessagesQueryKey(threadId),
+            (old: any) => {
+              if (!old) return old;
+              return old.map((m: any) =>
+                m.id === messageId ? { ...m, reactions } : m,
+              );
+            },
+          );
         },
       },
     );
@@ -217,7 +318,12 @@ export default function DmThread() {
     if (!threadId || !messages || messages.length === 0) return;
     markThreadRead.mutate(
       { threadId },
-      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListDmThreadsQueryKey() }) },
+      {
+        onSuccess: () =>
+          queryClient.invalidateQueries({
+            queryKey: getListDmThreadsQueryKey(),
+          }),
+      },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId, messages?.length]);
@@ -259,13 +365,16 @@ export default function DmThread() {
         participantPublicKey: thread.otherUserPublicKey,
         setDmKey: (args) => setDmKey.mutateAsync(args),
       }).then(() => {
-        queryClient.invalidateQueries({ queryKey: getGetDmThreadQueryKey(threadId) });
+        queryClient.invalidateQueries({
+          queryKey: getGetDmThreadQueryKey(threadId),
+        });
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dmKey, thread, threadId]);
 
   // Turn decrypted file payloads into blob object URLs for preview/download.
+  // Voice messages reuse this same pipeline (they're just an audio file).
   useEffect(() => {
     if (!dmKey || !messages) return;
     let cancelled = false;
@@ -274,7 +383,11 @@ export default function DmThread() {
     (async () => {
       const next: Record<string, string> = {};
       for (const msg of messages) {
-        if (msg.type !== "file" || !isEncryptedPayload(msg.content)) continue;
+        if (
+          (msg.type !== "file" && msg.type !== "voice") ||
+          !isEncryptedPayload(msg.content)
+        )
+          continue;
         try {
           const blob = await decryptFile(dmKey, msg.content, msg.mimeType);
           const url = URL.createObjectURL(blob);
@@ -294,6 +407,40 @@ export default function DmThread() {
     return () => {
       cancelled = true;
       createdUrls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [dmKey, messages]);
+
+  // Reply/quote previews carry still-encrypted content (see
+  // MessageReplyPreview) and the quoted message may not be in the
+  // currently-loaded page, so this gets its own decrypt pass.
+  const [replyPreviewDecrypted, setReplyPreviewDecrypted] = useState<
+    Record<string, string>
+  >({});
+  useEffect(() => {
+    if (!dmKey || !messages) return;
+    let cancelled = false;
+    (async () => {
+      const next: Record<string, string> = {};
+      for (const msg of messages) {
+        if (!msg.replyTo || msg.replyTo.deletedAt) continue;
+        if (msg.replyTo.type !== "text") continue;
+        if (!isEncryptedPayload(msg.replyTo.content)) {
+          next[msg.replyTo.id] = msg.replyTo.content;
+          continue;
+        }
+        try {
+          next[msg.replyTo.id] = await decryptMessage(
+            dmKey,
+            msg.replyTo.content,
+          );
+        } catch {
+          next[msg.replyTo.id] = "";
+        }
+      }
+      if (!cancelled) setReplyPreviewDecrypted(next);
+    })();
+    return () => {
+      cancelled = true;
     };
   }, [dmKey, messages]);
 
@@ -325,20 +472,129 @@ export default function DmThread() {
         },
       });
     } catch {
-      toast({ variant: "destructive", title: "Couldn't send file", description: "An error occurred while uploading." });
+      toast({
+        variant: "destructive",
+        title: "Couldn't send file",
+        description: "An error occurred while uploading.",
+      });
     } finally {
       setIsUploading(false);
     }
   };
+
+  const handleStartRecording = async () => {
+    if (!dmKey || isUploading) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      recordedChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setIsRecording(true);
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((s) => {
+          if (s + 1 >= MAX_RECORDING_SECONDS) handleStopRecording();
+          return s + 1;
+        });
+      }, 1000);
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Couldn't access microphone",
+        description: "Please allow microphone access to send a voice message.",
+      });
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    mediaRecorderRef.current?.stop();
+    setIsRecording(false);
+  };
+
+  const handleCancelRecording = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== "inactive"
+    ) {
+      mediaRecorderRef.current.onstop = () => {
+        mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+      };
+      mediaRecorderRef.current.stop();
+    }
+    recordedChunksRef.current = [];
+    setIsRecording(false);
+    setRecordingSeconds(0);
+  };
+
+  useEffect(() => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+    const onStop = async () => {
+      if (recordedChunksRef.current.length === 0 || !threadId || !dmKey) return;
+      const blob = new Blob(recordedChunksRef.current, {
+        type: recorder.mimeType || "audio/webm",
+      });
+      recordedChunksRef.current = [];
+      const duration = recordingSecondsRef.current;
+      setIsSendingVoice(true);
+      try {
+        const encrypted = await encryptFile(dmKey, blob);
+        await sendDmMessage.mutateAsync({
+          threadId,
+          data: {
+            content: encrypted,
+            type: "voice",
+            fileName: "Voice message",
+            mimeType: blob.type,
+            fileSize: blob.size,
+            durationSeconds: duration,
+          },
+        });
+      } catch {
+        toast({
+          variant: "destructive",
+          title: "Couldn't send voice message",
+          description: "Please try again.",
+        });
+      } finally {
+        setIsSendingVoice(false);
+        setRecordingSeconds(0);
+      }
+    };
+    recorder.addEventListener("stop", onStop);
+    return () => recorder.removeEventListener("stop", onStop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRecording]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim() || !threadId || !dmKey) return;
 
     const encrypted = await encryptMessage(dmKey, content);
-    sendDmMessage.mutate({ threadId, data: { content: encrypted } }, {
-      onSuccess: () => setContent(""),
-    });
+    sendDmMessage.mutate(
+      { threadId, data: { content: encrypted, replyToId: replyingTo?.id } },
+      {
+        onSuccess: () => {
+          setContent("");
+          setReplyingTo(null);
+        },
+      },
+    );
   };
 
   const handleSaveEdit = async (e: React.FormEvent, messageId: string) => {
@@ -347,25 +603,45 @@ export default function DmThread() {
 
     const encrypted = await encryptMessage(dmKey, editDraft);
     try {
-      await editDmMessage.mutateAsync({ threadId, messageId, data: { content: encrypted } });
+      await editDmMessage.mutateAsync({
+        threadId,
+        messageId,
+        data: { content: encrypted },
+      });
       setEditingMessageId(null);
     } catch {
-      toast({ variant: "destructive", title: "Couldn't save edit", description: "Please try again." });
+      toast({
+        variant: "destructive",
+        title: "Couldn't save edit",
+        description: "Please try again.",
+      });
     }
   };
 
   const handleConfirmDelete = async () => {
     if (!deletingMessageId || !threadId) return;
     try {
-      await deleteDmMessage.mutateAsync({ threadId, messageId: deletingMessageId });
+      await deleteDmMessage.mutateAsync({
+        threadId,
+        messageId: deletingMessageId,
+      });
     } catch {
-      toast({ variant: "destructive", title: "Couldn't delete message", description: "Please try again." });
+      toast({
+        variant: "destructive",
+        title: "Couldn't delete message",
+        description: "Please try again.",
+      });
     } finally {
       setDeletingMessageId(null);
     }
   };
 
-  if (threadLoading) return <div className="p-10 flex-1 flex items-center justify-center">Loading...</div>;
+  if (threadLoading)
+    return (
+      <div className="p-10 flex-1 flex items-center justify-center">
+        Loading...
+      </div>
+    );
   if (!thread) return <div className="p-10">Conversation not found</div>;
 
   return (
@@ -374,12 +650,19 @@ export default function DmThread() {
       <header className="flex-none h-16 border-b border-border bg-white px-3 sm:px-6 flex items-center justify-between shadow-sm z-10 gap-2">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <Link href="/app" className="md:hidden flex-shrink-0">
-            <Button variant="ghost" size="icon" className="rounded-full" aria-label="Back to chats">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full"
+              aria-label="Back to chats"
+            >
               <ArrowLeft className="w-5 h-5" />
             </Button>
           </Link>
           <Avatar className="w-9 h-9 border shadow-sm flex-shrink-0">
-            {thread.otherUserAvatarUrl && <AvatarImage src={thread.otherUserAvatarUrl} />}
+            {thread.otherUserAvatarUrl && (
+              <AvatarImage src={thread.otherUserAvatarUrl} />
+            )}
             <AvatarFallback className="bg-secondary text-secondary-foreground text-sm">
               {thread.otherUserName.charAt(0).toUpperCase()}
             </AvatarFallback>
@@ -404,14 +687,21 @@ export default function DmThread() {
 
         <div className="flex items-center gap-2 flex-shrink-0">
           <Link href={`/app/dms/${threadId}/call?mode=voice`}>
-            <Button variant="outline" className="rounded-full gap-2 px-2.5 sm:px-4" aria-label="Voice call">
+            <Button
+              variant="outline"
+              className="rounded-full gap-2 px-2.5 sm:px-4"
+              aria-label="Voice call"
+            >
               <Phone className="w-4 h-4" />
               <span className="hidden sm:inline">Voice Call</span>
             </Button>
           </Link>
 
           <Link href={`/app/dms/${threadId}/call`}>
-            <Button className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md gap-2 px-2.5 sm:px-4" aria-label="Video call">
+            <Button
+              className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md gap-2 px-2.5 sm:px-4"
+              aria-label="Video call"
+            >
               <Video className="w-4 h-4" />
               <span className="hidden sm:inline">Join Call</span>
             </Button>
@@ -427,12 +717,21 @@ export default function DmThread() {
               if (isSearchOpen) setSearchQuery("");
             }}
           >
-            {isSearchOpen ? <X className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+            {isSearchOpen ? (
+              <X className="w-4 h-4" />
+            ) : (
+              <Search className="w-4 h-4" />
+            )}
           </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" className="rounded-full text-muted-foreground" aria-label="Conversation actions">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="rounded-full text-muted-foreground"
+                aria-label="Conversation actions"
+              >
                 <MoreVertical className="w-5 h-5" />
               </Button>
             </DropdownMenuTrigger>
@@ -461,7 +760,8 @@ export default function DmThread() {
             />
             {searchQuery && matchingMessageIds && (
               <span className="text-xs text-muted-foreground flex-shrink-0">
-                {matchingMessageIds.size} match{matchingMessageIds.size === 1 ? "" : "es"}
+                {matchingMessageIds.size} match
+                {matchingMessageIds.size === 1 ? "" : "es"}
               </span>
             )}
           </div>
@@ -482,22 +782,34 @@ export default function DmThread() {
           ) : (
             messages?.map((msg, idx) => {
               const isMe = msg.senderId === profile?.id;
-              const showAvatar = !isMe && (idx === 0 || messages[idx - 1].senderId !== msg.senderId);
-              const isLastMine = isMe && !messages.slice(idx + 1).some((m) => m.senderId === profile?.id);
+              const showAvatar =
+                !isMe &&
+                (idx === 0 || messages[idx - 1].senderId !== msg.senderId);
+              const isLastMine =
+                isMe &&
+                !messages
+                  .slice(idx + 1)
+                  .some((m) => m.senderId === profile?.id);
               const isSeen =
                 isLastMine &&
                 !!otherUserLastReadAt &&
                 new Date(otherUserLastReadAt) >= new Date(msg.createdAt);
 
-              if (matchingMessageIds && !matchingMessageIds.has(msg.id)) return null;
+              if (matchingMessageIds && !matchingMessageIds.has(msg.id))
+                return null;
 
               return (
-                <div key={msg.id} className={`flex gap-2 group ${isMe ? 'justify-end' : 'justify-start'}`}>
+                <div
+                  key={msg.id}
+                  className={`flex gap-2 group ${isMe ? "justify-end" : "justify-start"}`}
+                >
                   {!isMe && (
                     <div className="w-8 flex-shrink-0">
                       {showAvatar && (
                         <Avatar className="w-8 h-8 border shadow-sm">
-                          {msg.senderAvatarUrl && <AvatarImage src={msg.senderAvatarUrl} />}
+                          {msg.senderAvatarUrl && (
+                            <AvatarImage src={msg.senderAvatarUrl} />
+                          )}
                           <AvatarFallback className="bg-secondary text-secondary-foreground text-xs">
                             {msg.senderName.charAt(0).toUpperCase()}
                           </AvatarFallback>
@@ -510,13 +822,23 @@ export default function DmThread() {
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-end pb-6">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button size="icon" variant="ghost" className="w-7 h-7 rounded-full text-muted-foreground" aria-label="Message actions">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="w-7 h-7 rounded-full text-muted-foreground"
+                            aria-label="Message actions"
+                          >
                             <MoreVertical className="w-4 h-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           {msg.type === "text" && (
-                            <DropdownMenuItem onClick={() => { setEditingMessageId(msg.id); setEditDraft(decrypted[msg.id] ?? ""); }}>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setEditingMessageId(msg.id);
+                                setEditDraft(decrypted[msg.id] ?? "");
+                              }}
+                            >
                               <Pencil className="w-4 h-4 mr-2" /> Edit
                             </DropdownMenuItem>
                           )}
@@ -531,22 +853,78 @@ export default function DmThread() {
                     </div>
                   )}
 
-                  <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[75%]`}>
+                  <div
+                    className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-[75%]`}
+                  >
+                    {!msg.deletedAt && msg.replyTo && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = document.getElementById(
+                            `dm-message-${msg.replyTo!.id}`,
+                          );
+                          target?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "center",
+                          });
+                        }}
+                        className={`mb-1 max-w-full text-left border-l-2 border-primary/40 bg-muted/40 rounded-md px-2.5 py-1.5 text-xs hover:bg-muted/60 transition-colors ${isMe ? "self-end" : "self-start"}`}
+                      >
+                        <div className="font-medium text-primary/80">
+                          {msg.replyTo.senderId === profile?.id
+                            ? "You"
+                            : msg.replyTo.senderName}
+                        </div>
+                        <div className="text-muted-foreground truncate max-w-[220px]">
+                          {msg.replyTo.deletedAt
+                            ? "This message was deleted"
+                            : msg.replyTo.type === "file"
+                              ? `📎 ${msg.replyTo.fileName ?? "File"}`
+                              : msg.replyTo.type === "voice"
+                                ? "🎤 Voice message"
+                                : (replyPreviewDecrypted[msg.replyTo.id] ??
+                                  "…")}
+                        </div>
+                      </button>
+                    )}
                     {msg.deletedAt ? (
-                      <div className="px-4 py-2.5 rounded-2xl text-sm italic text-muted-foreground bg-muted/50 border border-border">
+                      <div
+                        id={`dm-message-${msg.id}`}
+                        className="px-4 py-2.5 rounded-2xl text-sm italic text-muted-foreground bg-muted/50 border border-border"
+                      >
                         This message was deleted
                       </div>
                     ) : msg.type === "file" ? (
-                      <FileBubble
-                        isMe={isMe}
-                        fileName={msg.fileName}
-                        mimeType={msg.mimeType}
-                        fileSize={msg.fileSize}
-                        url={fileUrls[msg.id]}
-                        ready={!!decrypted[msg.id] || !isEncryptedPayload(msg.content)}
-                      />
+                      <div id={`dm-message-${msg.id}`}>
+                        <FileBubble
+                          isMe={isMe}
+                          fileName={msg.fileName}
+                          mimeType={msg.mimeType}
+                          fileSize={msg.fileSize}
+                          url={fileUrls[msg.id]}
+                          ready={
+                            !!decrypted[msg.id] ||
+                            !isEncryptedPayload(msg.content)
+                          }
+                        />
+                      </div>
+                    ) : msg.type === "voice" ? (
+                      <div id={`dm-message-${msg.id}`}>
+                        <VoiceBubble
+                          isMe={isMe}
+                          durationSeconds={msg.durationSeconds}
+                          url={fileUrls[msg.id]}
+                          ready={
+                            !!decrypted[msg.id] ||
+                            !isEncryptedPayload(msg.content)
+                          }
+                        />
+                      </div>
                     ) : editingMessageId === msg.id ? (
-                      <form onSubmit={(e) => handleSaveEdit(e, msg.id)} className="flex flex-col gap-1.5 w-full min-w-[220px]">
+                      <form
+                        onSubmit={(e) => handleSaveEdit(e, msg.id)}
+                        className="flex flex-col gap-1.5 w-full min-w-[220px]"
+                      >
                         <Input
                           value={editDraft}
                           onChange={(e) => setEditDraft(e.target.value)}
@@ -554,36 +932,66 @@ export default function DmThread() {
                           className="text-sm"
                         />
                         <div className="flex gap-2 justify-end">
-                          <Button type="button" size="sm" variant="ghost" onClick={() => setEditingMessageId(null)}>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingMessageId(null)}
+                          >
                             Cancel
                           </Button>
-                          <Button type="submit" size="sm" disabled={!editDraft.trim() || editDmMessage.isPending}>
+                          <Button
+                            type="submit"
+                            size="sm"
+                            disabled={
+                              !editDraft.trim() || editDmMessage.isPending
+                            }
+                          >
                             Save
                           </Button>
                         </div>
                       </form>
                     ) : (
-                      <div className={`
+                      <div
+                        id={`dm-message-${msg.id}`}
+                        className={`
                         px-4 py-2.5 rounded-2xl shadow-sm text-sm
-                        ${isMe ?
-                          'bg-primary text-primary-foreground rounded-tr-sm' :
-                          'bg-white border border-border text-foreground rounded-tl-sm'
+                        ${
+                          isMe
+                            ? "bg-primary text-primary-foreground rounded-tr-sm"
+                            : "bg-white border border-border text-foreground rounded-tl-sm"
                         }
-                      `}>
-                        {isEncryptedPayload(msg.content) ? (decrypted[msg.id] ?? "🔒 Decrypting…") : msg.content}
+                      `}
+                      >
+                        {isEncryptedPayload(msg.content)
+                          ? (decrypted[msg.id] ?? "🔒 Decrypting…")
+                          : msg.content}
                       </div>
                     )}
                     <span className="text-[10px] text-muted-foreground/60 mt-1 px-1 flex items-center gap-1">
                       {format(new Date(msg.createdAt), "h:mm a")}
                       {msg.editedAt && !msg.deletedAt && <span>(edited)</span>}
-                      {isLastMine && (
-                        isSeen ? (
+                      {isLastMine &&
+                        (isSeen ? (
                           <span className="flex items-center gap-0.5 text-primary/70">
                             <CheckCheck className="w-3.5 h-3.5" /> Seen
                           </span>
                         ) : (
                           <Check className="w-3.5 h-3.5" />
-                        )
+                        ))}
+                      {!msg.deletedAt && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReplyingTo(msg);
+                            setEditingMessageId(null);
+                            contentInputRef.current?.focus();
+                          }}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 text-muted-foreground hover:text-foreground"
+                          aria-label="Reply"
+                        >
+                          <Reply className="w-3.5 h-3.5" />
+                        </button>
                       )}
                       {!msg.deletedAt && (
                         <DropdownMenu>
@@ -596,13 +1004,18 @@ export default function DmThread() {
                               <Smile className="w-3.5 h-3.5" />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align={isMe ? "end" : "start"} className="flex gap-1 p-1.5 w-auto">
+                          <DropdownMenuContent
+                            align={isMe ? "end" : "start"}
+                            className="flex gap-1 p-1.5 w-auto"
+                          >
                             {QUICK_REACTIONS.map((emoji) => (
                               <button
                                 key={emoji}
                                 type="button"
                                 className="text-lg hover:scale-125 transition-transform px-1"
-                                onClick={() => handleToggleReaction(msg.id, emoji)}
+                                onClick={() =>
+                                  handleToggleReaction(msg.id, emoji)
+                                }
                               >
                                 {emoji}
                               </button>
@@ -612,12 +1025,16 @@ export default function DmThread() {
                       )}
                     </span>
                     {msg.reactions.length > 0 && (
-                      <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        className={`flex flex-wrap gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}
+                      >
                         {msg.reactions.map((r) => (
                           <button
                             key={r.emoji}
                             type="button"
-                            onClick={() => handleToggleReaction(msg.id, r.emoji)}
+                            onClick={() =>
+                              handleToggleReaction(msg.id, r.emoji)
+                            }
                             className={`text-xs px-1.5 py-0.5 rounded-full border transition-colors ${
                               r.userIds.includes(profile?.id ?? "")
                                 ? "bg-primary/10 border-primary/30 text-primary"
@@ -644,69 +1061,172 @@ export default function DmThread() {
             {thread.otherUserName} is typing…
           </div>
         )}
+        {replyingTo && (
+          <div className="max-w-3xl mx-auto flex items-start justify-between gap-2 bg-muted/50 border-l-2 border-primary/50 rounded-md px-3 py-2 mb-1">
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-primary/80">
+                Replying to{" "}
+                {replyingTo.senderId === profile?.id
+                  ? "yourself"
+                  : thread.otherUserName}
+              </div>
+              <div className="text-xs text-muted-foreground truncate">
+                {replyingTo.type === "file"
+                  ? `📎 ${replyingTo.fileName ?? "File"}`
+                  : replyingTo.type === "voice"
+                    ? "🎤 Voice message"
+                    : (decrypted[replyingTo.id] ?? "…")}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReplyingTo(null)}
+              className="text-muted-foreground hover:text-foreground flex-shrink-0"
+              aria-label="Cancel reply"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
       <div className="flex-none p-4 pt-0 bg-white border-t border-border shadow-[0_-4px_20px_-15px_rgba(0,0,0,0.1)]">
-        <form onSubmit={handleSend} className="max-w-3xl mx-auto flex items-end gap-3 relative">
-          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
+        <form
+          onSubmit={handleSend}
+          className="max-w-3xl mx-auto flex items-end gap-3 relative"
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
           <Button
             type="button"
             size="icon"
             variant="ghost"
             className="rounded-full w-12 h-12 flex-shrink-0 text-muted-foreground"
-            disabled={!dmKey || isUploading}
+            disabled={!dmKey || isUploading || isRecording}
             onClick={() => fileInputRef.current?.click()}
             aria-label="Attach a file"
           >
             <Paperclip className="w-5 h-5" />
           </Button>
-          <Input
-            value={content}
-            onChange={(e) => {
-              setContent(e.target.value);
-              handleTyping();
-            }}
-            placeholder={isUploading ? "Sending file…" : !dmKey ? "Waiting for encryption access…" : "Type a message..."}
-            className="flex-1 bg-muted/30 border-muted-border rounded-full px-6 py-6 text-base shadow-inner focus-visible:ring-1"
-          />
-          <Button
-            type="submit"
-            size="icon"
-            disabled={!content.trim() || sendDmMessage.isPending || !dmKey}
-            className="rounded-full w-12 h-12 shadow-md flex-shrink-0 absolute right-1 bottom-1"
-          >
-            <Send className="w-5 h-5 ml-1" />
-          </Button>
+          {isRecording ? (
+            <div className="flex-1 flex items-center gap-3 bg-muted/30 rounded-full px-6 py-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-destructive animate-pulse flex-shrink-0" />
+              <span className="text-sm font-medium tabular-nums">
+                {formatDuration(recordingSeconds)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                Recording voice message…
+              </span>
+              <div className="ml-auto flex items-center gap-1">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="rounded-full w-9 h-9"
+                  onClick={handleCancelRecording}
+                  aria-label="Cancel recording"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  className="rounded-full w-9 h-9"
+                  onClick={handleStopRecording}
+                  aria-label="Stop and send recording"
+                >
+                  <Square className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Input
+              ref={contentInputRef}
+              value={content}
+              onChange={(e) => {
+                setContent(e.target.value);
+                handleTyping();
+              }}
+              placeholder={
+                isUploading
+                  ? "Sending file…"
+                  : !dmKey
+                    ? "Waiting for encryption access…"
+                    : "Type a message..."
+              }
+              className="flex-1 bg-muted/30 border-muted-border rounded-full px-6 py-6 text-base shadow-inner focus-visible:ring-1"
+            />
+          )}
+          {!isRecording && !content.trim() && (
+            <Button
+              type="button"
+              size="icon"
+              className="rounded-full w-12 h-12 shadow-md flex-shrink-0 absolute right-1 bottom-1"
+              disabled={!dmKey || isUploading || isSendingVoice}
+              onClick={handleStartRecording}
+              aria-label="Record a voice message"
+            >
+              <Mic className="w-5 h-5" />
+            </Button>
+          )}
+          {!isRecording && !!content.trim() && (
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!content.trim() || sendDmMessage.isPending || !dmKey}
+              className="rounded-full w-12 h-12 shadow-md flex-shrink-0 absolute right-1 bottom-1"
+            >
+              <Send className="w-5 h-5 ml-1" />
+            </Button>
+          )}
         </form>
       </div>
 
-      <AlertDialog open={!!deletingMessageId} onOpenChange={(open) => !open && setDeletingMessageId(null)}>
+      <AlertDialog
+        open={!!deletingMessageId}
+        onOpenChange={(open) => !open && setDeletingMessageId(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this message?</AlertDialogTitle>
             <AlertDialogDescription>
-              This can't be undone. The message (and its attachment, if any) will be replaced with "This message was deleted" for both of you.
+              This can't be undone. The message (and its attachment, if any)
+              will be replaced with "This message was deleted" for both of you.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={isDeleteThreadConfirmOpen} onOpenChange={setIsDeleteThreadConfirmOpen}>
+      <AlertDialog
+        open={isDeleteThreadConfirmOpen}
+        onOpenChange={setIsDeleteThreadConfirmOpen}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this conversation?</AlertDialogTitle>
             <AlertDialogDescription>
-              This can't be undone. Every message with {thread.otherUserName} will be permanently deleted for both of you.
+              This can't be undone. Every message with {thread.otherUserName}{" "}
+              will be permanently deleted for both of you.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDeleteThread} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={handleConfirmDeleteThread}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               Delete Conversation
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -741,7 +1261,9 @@ function FileBubble({
 
   if (!ready || !url) {
     return (
-      <div className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-2 ${isMe ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-white border border-border text-foreground rounded-tl-sm'}`}>
+      <div
+        className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-2 ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-white border border-border text-foreground rounded-tl-sm"}`}
+      >
         <FileText className="w-4 h-4" />
         {fileName ?? "File"} — 🔒 Decrypting…
       </div>
@@ -750,8 +1272,16 @@ function FileBubble({
 
   if (isImage) {
     return (
-      <a href={url} download={fileName ?? "image"} className="block rounded-2xl overflow-hidden shadow-sm border border-border max-w-xs">
-        <img src={url} alt={fileName ?? "Shared image"} className="w-full h-auto object-cover" />
+      <a
+        href={url}
+        download={fileName ?? "image"}
+        className="block rounded-2xl overflow-hidden shadow-sm border border-border max-w-xs"
+      >
+        <img
+          src={url}
+          alt={fileName ?? "Shared image"}
+          className="w-full h-auto object-cover"
+        />
       </a>
     );
   }
@@ -760,7 +1290,7 @@ function FileBubble({
     <a
       href={url}
       download={fileName ?? "file"}
-      className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-3 hover:opacity-90 transition-opacity ${isMe ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-white border border-border text-foreground rounded-tl-sm'}`}
+      className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-3 hover:opacity-90 transition-opacity ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-white border border-border text-foreground rounded-tl-sm"}`}
     >
       <FileText className="w-5 h-5 flex-shrink-0" />
       <div className="min-w-0">
@@ -769,5 +1299,87 @@ function FileBubble({
       </div>
       <Download className="w-4 h-4 flex-shrink-0 ml-auto" />
     </a>
+  );
+}
+
+function VoiceBubble({
+  isMe,
+  durationSeconds,
+  url,
+  ready,
+}: {
+  isMe: boolean;
+  durationSeconds?: number | null;
+  url?: string;
+  ready: boolean;
+}) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  if (!ready || !url) {
+    return (
+      <div
+        className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-2 ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-white border border-border text-foreground rounded-tl-sm"}`}
+      >
+        <Mic className="w-4 h-4" />
+        Voice message — 🔒 Decrypting…
+      </div>
+    );
+  }
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) audio.pause();
+    else audio.play();
+  };
+
+  return (
+    <div
+      className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-3 min-w-[180px] ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-white border border-border text-foreground rounded-tl-sm"}`}
+    >
+      <audio
+        ref={audioRef}
+        src={url}
+        preload="metadata"
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => {
+          setIsPlaying(false);
+          setProgress(0);
+        }}
+        onTimeUpdate={(e) => {
+          const audio = e.currentTarget;
+          if (audio.duration) setProgress(audio.currentTime / audio.duration);
+        }}
+        className="hidden"
+      />
+      <button
+        type="button"
+        onClick={togglePlay}
+        aria-label={isPlaying ? "Pause voice message" : "Play voice message"}
+        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isMe ? "bg-white/20" : "bg-primary/10"}`}
+      >
+        {isPlaying ? (
+          <Pause className="w-4 h-4" />
+        ) : (
+          <Play className="w-4 h-4 ml-0.5" />
+        )}
+      </button>
+      <div className="flex-1 min-w-0">
+        <div
+          className={`h-1 rounded-full overflow-hidden ${isMe ? "bg-white/25" : "bg-muted"}`}
+        >
+          <div
+            className={`h-full ${isMe ? "bg-white" : "bg-primary"}`}
+            style={{ width: `${Math.round(progress * 100)}%` }}
+          />
+        </div>
+      </div>
+      <span className="text-xs opacity-80 flex-shrink-0 tabular-nums">
+        {formatDuration(durationSeconds ?? 0)}
+      </span>
+    </div>
   );
 }

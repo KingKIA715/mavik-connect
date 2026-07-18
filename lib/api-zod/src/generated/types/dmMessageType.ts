@@ -12,4 +12,5 @@ export type DmMessageType = typeof DmMessageType[keyof typeof DmMessageType];
 export const DmMessageType = {
   text: 'text',
   file: 'file',
+  voice: 'voice',
 } as const;

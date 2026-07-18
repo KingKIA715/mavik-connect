@@ -33,6 +33,8 @@ export * from './messageEditInput';
 export * from './messageInput';
 export * from './messageInputType';
 export * from './messageReaction';
+export * from './messageReplyPreview';
+export * from './messageReplyPreviewType';
 export * from './messageType';
 export * from './publicKeyInput';
 export * from './readReceipt';

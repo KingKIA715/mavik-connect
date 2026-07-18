@@ -5,7 +5,9 @@ import { db, groupMembersTable } from "@workspace/db";
  * Parses a groupId route param (always a numeric string in this app) into
  * an integer, or returns null if it isn't a valid positive integer.
  */
-export function parseGroupId(raw: string | string[] | undefined): number | null {
+export function parseGroupId(
+  raw: string | string[] | undefined,
+): number | null {
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (!value) return null;
   const id = Number.parseInt(value, 10);
@@ -26,4 +28,18 @@ export async function isGroupMember(
       ),
     );
   return Boolean(membership);
+}
+
+/**
+ * Returns the set of current member user IDs for a group. Used to validate
+ * @mention targets sent by the client — mentions only make sense (and only
+ * get a "you were mentioned" treatment) for people who are actually in the
+ * group, so anything else is silently dropped rather than trusted as-is.
+ */
+export async function getGroupMemberIds(groupId: number): Promise<Set<string>> {
+  const members = await db
+    .select({ userId: groupMembersTable.userId })
+    .from(groupMembersTable)
+    .where(eq(groupMembersTable.groupId, groupId));
+  return new Set(members.map((m) => m.userId));
 }

@@ -1033,7 +1033,8 @@ components:
 
     GroupMember:
       type: object
-      required: [userId, name, email, role, joinedAt, hasEncryptionKey, lastReadAt]
+      required:
+        [userId, name, email, role, joinedAt, hasEncryptionKey, lastReadAt]
       properties:
         userId:
           type: string
@@ -1113,9 +1114,47 @@ components:
           items:
             type: string
 
+    MessageReplyPreview:
+      type: object
+      description: >
+        A denormalized snapshot of the message being replied to, so clients
+        can render a quoted snippet without needing that message to already
+        be loaded on the page. `content` is still E2E-encrypted ciphertext
+        (the server never sees plaintext), decrypted client-side same as
+        any other message.
+      required: [id, senderId, senderName, content, type, deletedAt]
+      properties:
+        id:
+          type: string
+        senderId:
+          type: string
+        senderName:
+          type: string
+        content:
+          type: string
+        type:
+          type: string
+          enum: [text, file, voice]
+        fileName:
+          type: ["string", "null"]
+        deletedAt:
+          type: ["string", "null"]
+          description: If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.
+
     Message:
       type: object
-      required: [id, groupId, senderId, senderName, content, type, createdAt, reactions]
+      required:
+        [
+          id,
+          groupId,
+          senderId,
+          senderName,
+          content,
+          type,
+          createdAt,
+          reactions,
+          mentionedUserIds,
+        ]
       properties:
         id:
           type: string
@@ -1131,7 +1170,7 @@ components:
           type: string
         type:
           type: string
-          enum: [text, file]
+          enum: [text, file, voice]
           default: text
         fileName:
           type: ["string", "null"]
@@ -1139,6 +1178,20 @@ components:
           type: ["string", "null"]
         fileSize:
           type: ["integer", "null"]
+        durationSeconds:
+          type: ["integer", "null"]
+          description: Playback duration in seconds, for voice messages.
+        replyToId:
+          type: ["string", "null"]
+        replyTo:
+          oneOf:
+            - $ref: "#/components/schemas/MessageReplyPreview"
+            - type: "null"
+        mentionedUserIds:
+          type: array
+          items:
+            type: string
+          description: Group member user IDs tagged with @mentions in this message.
         createdAt:
           type: string
         editedAt:
@@ -1159,7 +1212,7 @@ components:
           minLength: 1
         type:
           type: string
-          enum: [text, file]
+          enum: [text, file, voice]
           default: text
         fileName:
           type: ["string", "null"]
@@ -1167,6 +1220,14 @@ components:
           type: ["string", "null"]
         fileSize:
           type: ["integer", "null"]
+        durationSeconds:
+          type: ["integer", "null"]
+        replyToId:
+          type: ["string", "null"]
+        mentionedUserIds:
+          type: array
+          items:
+            type: string
 
     MessageEditInput:
       type: object
@@ -1217,7 +1278,16 @@ components:
 
     DmThread:
       type: object
-      required: [id, otherUserId, otherUserName, otherUserEmail, otherUserHasEncryptionKey, createdAt, unreadCount]
+      required:
+        [
+          id,
+          otherUserId,
+          otherUserName,
+          otherUserEmail,
+          otherUserHasEncryptionKey,
+          createdAt,
+          unreadCount,
+        ]
       properties:
         id:
           type: string
@@ -1252,7 +1322,17 @@ components:
 
     DmMessage:
       type: object
-      required: [id, threadId, senderId, senderName, content, type, createdAt, reactions]
+      required:
+        [
+          id,
+          threadId,
+          senderId,
+          senderName,
+          content,
+          type,
+          createdAt,
+          reactions,
+        ]
       properties:
         id:
           type: string
@@ -1268,7 +1348,7 @@ components:
           type: string
         type:
           type: string
-          enum: [text, file]
+          enum: [text, file, voice]
           default: text
         fileName:
           type: ["string", "null"]
@@ -1276,6 +1356,15 @@ components:
           type: ["string", "null"]
         fileSize:
           type: ["integer", "null"]
+        durationSeconds:
+          type: ["integer", "null"]
+          description: Playback duration in seconds, for voice messages.
+        replyToId:
+          type: ["string", "null"]
+        replyTo:
+          oneOf:
+            - $ref: "#/components/schemas/MessageReplyPreview"
+            - type: "null"
         createdAt:
           type: string
         editedAt:
@@ -1296,7 +1385,7 @@ components:
           minLength: 1
         type:
           type: string
-          enum: [text, file]
+          enum: [text, file, voice]
           default: text
         fileName:
           type: ["string", "null"]
@@ -1304,6 +1393,10 @@ components:
           type: ["string", "null"]
         fileSize:
           type: ["integer", "null"]
+        durationSeconds:
+          type: ["integer", "null"]
+        replyToId:
+          type: ["string", "null"]
 
     DmMessageEditInput:
       type: object

@@ -1,6 +1,11 @@
 import { Router, type IRouter } from "express";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { db, messagesTable, messageReactionsTable, usersTable } from "@workspace/db";
+import {
+  db,
+  messagesTable,
+  messageReactionsTable,
+  usersTable,
+} from "@workspace/db";
 import {
   ListMessagesResponseItem,
   SendMessageBody,
@@ -13,7 +18,11 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { messageSendRateLimit } from "../middlewares/rateLimit";
-import { parseGroupId, isGroupMember } from "../lib/groupAccess";
+import {
+  parseGroupId,
+  isGroupMember,
+  getGroupMemberIds,
+} from "../lib/groupAccess";
 import { broadcastToGroup } from "../ws/hub";
 import { toIso, toIsoOrNull } from "../lib/serialize";
 
@@ -51,8 +60,74 @@ async function getReactionsByMessageId(
   for (const [messageId, byEmoji] of byMessage) {
     result.set(
       messageId,
-      Array.from(byEmoji.entries()).map(([emoji, userIds]) => ({ emoji, userIds })),
+      Array.from(byEmoji.entries()).map(([emoji, userIds]) => ({
+        emoji,
+        userIds,
+      })),
     );
+  }
+  return result;
+}
+
+/**
+ * Batch-fetches a denormalized reply preview for every distinct replyToId
+ * among the given messages, keyed by that replyToId. One extra query
+ * regardless of how many messages are replies, same batching approach as
+ * getReactionsByMessageId above.
+ */
+async function getReplyPreviewsByReplyToId(replyToIds: number[]): Promise<
+  Map<
+    number,
+    {
+      id: string;
+      senderId: string;
+      senderName: string;
+      content: string;
+      type: string;
+      fileName: string | null;
+      deletedAt: string | null;
+    }
+  >
+> {
+  const uniqueIds = [...new Set(replyToIds)];
+  if (uniqueIds.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      id: messagesTable.id,
+      senderId: messagesTable.senderId,
+      senderName: usersTable.name,
+      content: messagesTable.content,
+      type: messagesTable.type,
+      fileName: messagesTable.fileName,
+      deletedAt: messagesTable.deletedAt,
+    })
+    .from(messagesTable)
+    .innerJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
+    .where(inArray(messagesTable.id, uniqueIds));
+
+  const result = new Map<
+    number,
+    {
+      id: string;
+      senderId: string;
+      senderName: string;
+      content: string;
+      type: string;
+      fileName: string | null;
+      deletedAt: string | null;
+    }
+  >();
+  for (const row of rows) {
+    result.set(row.id, {
+      id: String(row.id),
+      senderId: row.senderId,
+      senderName: row.senderName,
+      content: row.deletedAt ? "" : row.content,
+      type: row.type,
+      fileName: row.deletedAt ? null : row.fileName,
+      deletedAt: toIsoOrNull(row.deletedAt),
+    });
   }
   return result;
 }
@@ -74,65 +149,72 @@ function parsePaginationQuery(query: Record<string, unknown>): {
   return { limit, offset };
 }
 
-router.get(
-  "/groups/:groupId/messages",
-  async (req, res): Promise<void> => {
-    const groupId = parseGroupId(req.params.groupId);
-    if (groupId === null) {
-      res.status(404).json({ error: "Group not found" });
-      return;
-    }
+router.get("/groups/:groupId/messages", async (req, res): Promise<void> => {
+  const groupId = parseGroupId(req.params.groupId);
+  if (groupId === null) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
 
-    const member = await isGroupMember(groupId, req.userId!);
-    if (!member) {
-      res.status(404).json({ error: "Group not found" });
-      return;
-    }
+  const member = await isGroupMember(groupId, req.userId!);
+  if (!member) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
 
-    const { limit, offset } = parsePaginationQuery(req.query);
+  const { limit, offset } = parsePaginationQuery(req.query);
 
-    const rows = await db
-      .select({
-        id: messagesTable.id,
-        groupId: messagesTable.groupId,
-        senderId: messagesTable.senderId,
-        senderName: usersTable.name,
-        senderAvatarUrl: usersTable.avatarUrl,
-        content: messagesTable.content,
-        type: messagesTable.type,
-        fileName: messagesTable.fileName,
-        mimeType: messagesTable.mimeType,
-        fileSize: messagesTable.fileSize,
-        createdAt: messagesTable.createdAt,
-        editedAt: messagesTable.editedAt,
-        deletedAt: messagesTable.deletedAt,
-      })
-      .from(messagesTable)
-      .innerJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
-      .where(eq(messagesTable.groupId, groupId))
-      .orderBy(asc(messagesTable.createdAt))
-      .limit(limit)
-      .offset(offset);
+  const rows = await db
+    .select({
+      id: messagesTable.id,
+      groupId: messagesTable.groupId,
+      senderId: messagesTable.senderId,
+      senderName: usersTable.name,
+      senderAvatarUrl: usersTable.avatarUrl,
+      content: messagesTable.content,
+      type: messagesTable.type,
+      fileName: messagesTable.fileName,
+      mimeType: messagesTable.mimeType,
+      fileSize: messagesTable.fileSize,
+      durationSeconds: messagesTable.durationSeconds,
+      replyToId: messagesTable.replyToId,
+      mentionedUserIds: messagesTable.mentionedUserIds,
+      createdAt: messagesTable.createdAt,
+      editedAt: messagesTable.editedAt,
+      deletedAt: messagesTable.deletedAt,
+    })
+    .from(messagesTable)
+    .innerJoin(usersTable, eq(messagesTable.senderId, usersTable.id))
+    .where(eq(messagesTable.groupId, groupId))
+    .orderBy(asc(messagesTable.createdAt))
+    .limit(limit)
+    .offset(offset);
 
-    const reactionsByMessageId = await getReactionsByMessageId(
-      rows.map((r) => r.id),
-    );
+  const reactionsByMessageId = await getReactionsByMessageId(
+    rows.map((r) => r.id),
+  );
+  const replyPreviewsByReplyToId = await getReplyPreviewsByReplyToId(
+    rows.flatMap((r) => (r.replyToId ? [r.replyToId] : [])),
+  );
 
-    res.json(
-      rows.map((row) =>
-        ListMessagesResponseItem.parse({
-          ...row,
-          id: String(row.id),
-          groupId: String(row.groupId),
-          createdAt: toIso(row.createdAt),
-          editedAt: toIsoOrNull(row.editedAt),
-          deletedAt: toIsoOrNull(row.deletedAt),
-          reactions: reactionsByMessageId.get(row.id) ?? [],
-        }),
-      ),
-    );
-  },
-);
+  res.json(
+    rows.map((row) =>
+      ListMessagesResponseItem.parse({
+        ...row,
+        id: String(row.id),
+        groupId: String(row.groupId),
+        replyToId: row.replyToId ? String(row.replyToId) : null,
+        replyTo: row.replyToId
+          ? (replyPreviewsByReplyToId.get(row.replyToId) ?? null)
+          : null,
+        createdAt: toIso(row.createdAt),
+        editedAt: toIsoOrNull(row.editedAt),
+        deletedAt: toIsoOrNull(row.deletedAt),
+        reactions: reactionsByMessageId.get(row.id) ?? [],
+      }),
+    ),
+  );
+});
 
 router.post(
   "/groups/:groupId/messages",
@@ -157,6 +239,34 @@ router.post(
       return;
     }
 
+    // A replyToId must point at a real message in this same group — a
+    // dangling/foreign replyToId is silently dropped rather than trusted,
+    // same defensive posture as the mention validation below.
+    let replyToId: number | null = null;
+    if (parsed.data.replyToId) {
+      const candidate = Number.parseInt(parsed.data.replyToId, 10);
+      if (Number.isFinite(candidate)) {
+        const [target] = await db
+          .select({ id: messagesTable.id })
+          .from(messagesTable)
+          .where(
+            and(
+              eq(messagesTable.id, candidate),
+              eq(messagesTable.groupId, groupId),
+            ),
+          );
+        if (target) replyToId = target.id;
+      }
+    }
+
+    // Mentions are plaintext metadata sent alongside the encrypted content
+    // (see messagesTable.mentionedUserIds) — only accept IDs that are
+    // actually current members of this group.
+    const memberIds = await getGroupMemberIds(groupId);
+    const mentionedUserIds = (parsed.data.mentionedUserIds ?? []).filter((id) =>
+      memberIds.has(id),
+    );
+
     const [message] = await db
       .insert(messagesTable)
       .values({
@@ -167,6 +277,9 @@ router.post(
         fileName: parsed.data.fileName ?? null,
         mimeType: parsed.data.mimeType ?? null,
         fileSize: parsed.data.fileSize ?? null,
+        durationSeconds: parsed.data.durationSeconds ?? null,
+        replyToId,
+        mentionedUserIds,
       })
       .returning();
 
@@ -174,6 +287,12 @@ router.post(
       .select({ name: usersTable.name, avatarUrl: usersTable.avatarUrl })
       .from(usersTable)
       .where(eq(usersTable.id, userId));
+
+    const replyTo = message.replyToId
+      ? ((await getReplyPreviewsByReplyToId([message.replyToId])).get(
+          message.replyToId,
+        ) ?? null)
+      : null;
 
     const payload = SendMessageResponse.parse({
       id: String(message.id),
@@ -186,6 +305,10 @@ router.post(
       fileName: message.fileName,
       mimeType: message.mimeType,
       fileSize: message.fileSize,
+      durationSeconds: message.durationSeconds,
+      replyToId: message.replyToId ? String(message.replyToId) : null,
+      replyTo,
+      mentionedUserIds: message.mentionedUserIds,
       createdAt: toIso(message.createdAt),
       editedAt: null,
       deletedAt: null,
@@ -219,7 +342,10 @@ router.patch(
       .select()
       .from(messagesTable)
       .where(
-        and(eq(messagesTable.id, messageId), eq(messagesTable.groupId, groupId)),
+        and(
+          eq(messagesTable.id, messageId),
+          eq(messagesTable.groupId, groupId),
+        ),
       );
     if (!existing) {
       res.status(404).json({ error: "Message not found" });
@@ -251,7 +377,13 @@ router.patch(
       .from(usersTable)
       .where(eq(usersTable.id, userId));
 
-    const reactions = (await getReactionsByMessageId([messageId])).get(messageId) ?? [];
+    const reactions =
+      (await getReactionsByMessageId([messageId])).get(messageId) ?? [];
+    const replyTo = updated.replyToId
+      ? ((await getReplyPreviewsByReplyToId([updated.replyToId])).get(
+          updated.replyToId,
+        ) ?? null)
+      : null;
 
     const payload = EditMessageResponse.parse({
       id: String(updated.id),
@@ -264,6 +396,10 @@ router.patch(
       fileName: updated.fileName,
       mimeType: updated.mimeType,
       fileSize: updated.fileSize,
+      durationSeconds: updated.durationSeconds,
+      replyToId: updated.replyToId ? String(updated.replyToId) : null,
+      replyTo,
+      mentionedUserIds: updated.mentionedUserIds,
       createdAt: toIso(updated.createdAt),
       editedAt: toIsoOrNull(updated.editedAt),
       deletedAt: toIsoOrNull(updated.deletedAt),
@@ -297,7 +433,10 @@ router.delete(
       .select()
       .from(messagesTable)
       .where(
-        and(eq(messagesTable.id, messageId), eq(messagesTable.groupId, groupId)),
+        and(
+          eq(messagesTable.id, messageId),
+          eq(messagesTable.groupId, groupId),
+        ),
       );
     if (!existing) {
       res.status(404).json({ error: "Message not found" });
@@ -325,7 +464,13 @@ router.delete(
       .from(usersTable)
       .where(eq(usersTable.id, userId));
 
-    const reactions = (await getReactionsByMessageId([messageId])).get(messageId) ?? [];
+    const reactions =
+      (await getReactionsByMessageId([messageId])).get(messageId) ?? [];
+    const replyTo = updated.replyToId
+      ? ((await getReplyPreviewsByReplyToId([updated.replyToId])).get(
+          updated.replyToId,
+        ) ?? null)
+      : null;
 
     const payload = DeleteMessageResponse.parse({
       id: String(updated.id),
@@ -338,6 +483,10 @@ router.delete(
       fileName: updated.fileName,
       mimeType: updated.mimeType,
       fileSize: updated.fileSize,
+      durationSeconds: updated.durationSeconds,
+      replyToId: updated.replyToId ? String(updated.replyToId) : null,
+      replyTo,
+      mentionedUserIds: updated.mentionedUserIds,
       createdAt: toIso(updated.createdAt),
       editedAt: toIsoOrNull(updated.editedAt),
       deletedAt: toIsoOrNull(updated.deletedAt),
@@ -371,7 +520,10 @@ router.put(
       .select({ id: messagesTable.id })
       .from(messagesTable)
       .where(
-        and(eq(messagesTable.id, messageId), eq(messagesTable.groupId, groupId)),
+        and(
+          eq(messagesTable.id, messageId),
+          eq(messagesTable.groupId, groupId),
+        ),
       );
     if (!existingMessage) {
       res.status(404).json({ error: "Message not found" });
@@ -401,7 +553,9 @@ router.put(
         .delete(messageReactionsTable)
         .where(eq(messageReactionsTable.id, existingReaction.id));
     } else {
-      await db.insert(messageReactionsTable).values({ messageId, userId, emoji });
+      await db
+        .insert(messageReactionsTable)
+        .values({ messageId, userId, emoji });
     }
 
     const reactions =
@@ -419,6 +573,12 @@ router.put(
       .from(usersTable)
       .where(eq(usersTable.id, full.senderId));
 
+    const replyTo = full.replyToId
+      ? ((await getReplyPreviewsByReplyToId([full.replyToId])).get(
+          full.replyToId,
+        ) ?? null)
+      : null;
+
     broadcastToGroup(groupId, {
       type: "message-updated",
       message: SendMessageResponse.parse({
@@ -432,6 +592,10 @@ router.put(
         fileName: full.fileName,
         mimeType: full.mimeType,
         fileSize: full.fileSize,
+        durationSeconds: full.durationSeconds,
+        replyToId: full.replyToId ? String(full.replyToId) : null,
+        replyTo,
+        mentionedUserIds: full.mentionedUserIds,
         createdAt: toIso(full.createdAt),
         editedAt: toIsoOrNull(full.editedAt),
         deletedAt: toIsoOrNull(full.deletedAt),

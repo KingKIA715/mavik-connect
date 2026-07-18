@@ -12,4 +12,5 @@ export type DmMessageInputType = typeof DmMessageInputType[keyof typeof DmMessag
 export const DmMessageInputType = {
   text: 'text',
   file: 'file',
+  voice: 'voice',
 } as const;

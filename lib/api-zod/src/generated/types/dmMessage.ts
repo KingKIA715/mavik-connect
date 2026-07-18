@@ -7,6 +7,7 @@
  */
 import type { DmMessageType } from './dmMessageType';
 import type { MessageReaction } from './messageReaction';
+import type { MessageReplyPreview } from './messageReplyPreview';
 
 export interface DmMessage {
   id: string;
@@ -23,6 +24,14 @@ export interface DmMessage {
   mimeType?: string | null;
   /** @nullable */
   fileSize?: number | null;
+  /**
+     * Playback duration in seconds, for voice messages.
+     * @nullable
+     */
+  durationSeconds?: number | null;
+  /** @nullable */
+  replyToId?: string | null;
+  replyTo?: MessageReplyPreview | null;
   createdAt: string;
   /** @nullable */
   editedAt?: string | null;

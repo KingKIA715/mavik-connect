@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   integer,
   pgTable,
   primaryKey,
@@ -54,6 +55,13 @@ export const dmMessagesTable = pgTable("dm_messages", {
   fileName: text("file_name"),
   mimeType: text("mime_type"),
   fileSize: integer("file_size"),
+  // See messagesTable's durationSeconds/replyToId for the reasoning — same
+  // voice-message and reply/quote support, mirrored here for DM threads.
+  durationSeconds: integer("duration_seconds"),
+  replyToId: integer("reply_to_id").references(
+    (): AnyPgColumn => dmMessagesTable.id,
+    { onDelete: "set null" },
+  ),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -61,9 +69,7 @@ export const dmMessagesTable = pgTable("dm_messages", {
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
-export const insertDmMessageSchema = createInsertSchema(
-  dmMessagesTable,
-).omit({
+export const insertDmMessageSchema = createInsertSchema(dmMessagesTable).omit({
   id: true,
   createdAt: true,
 });

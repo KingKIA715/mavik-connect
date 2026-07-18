@@ -71,8 +71,71 @@ async function getDmReactionsByMessageId(
   for (const [messageId, byEmoji] of byMessage) {
     result.set(
       messageId,
-      Array.from(byEmoji.entries()).map(([emoji, userIds]) => ({ emoji, userIds })),
+      Array.from(byEmoji.entries()).map(([emoji, userIds]) => ({
+        emoji,
+        userIds,
+      })),
     );
+  }
+  return result;
+}
+
+/**
+ * Same idea as messages.ts's getReplyPreviewsByReplyToId, over dm_messages.
+ */
+async function getDmReplyPreviewsByReplyToId(replyToIds: number[]): Promise<
+  Map<
+    number,
+    {
+      id: string;
+      senderId: string;
+      senderName: string;
+      content: string;
+      type: string;
+      fileName: string | null;
+      deletedAt: string | null;
+    }
+  >
+> {
+  const uniqueIds = [...new Set(replyToIds)];
+  if (uniqueIds.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      id: dmMessagesTable.id,
+      senderId: dmMessagesTable.senderId,
+      senderName: usersTable.name,
+      content: dmMessagesTable.content,
+      type: dmMessagesTable.type,
+      fileName: dmMessagesTable.fileName,
+      deletedAt: dmMessagesTable.deletedAt,
+    })
+    .from(dmMessagesTable)
+    .innerJoin(usersTable, eq(dmMessagesTable.senderId, usersTable.id))
+    .where(inArray(dmMessagesTable.id, uniqueIds));
+
+  const result = new Map<
+    number,
+    {
+      id: string;
+      senderId: string;
+      senderName: string;
+      content: string;
+      type: string;
+      fileName: string | null;
+      deletedAt: string | null;
+    }
+  >();
+  for (const row of rows) {
+    result.set(row.id, {
+      id: String(row.id),
+      senderId: row.senderId,
+      senderName: row.senderName,
+      content: row.deletedAt ? "" : row.content,
+      type: row.type,
+      fileName: row.deletedAt ? null : row.fileName,
+      deletedAt: toIsoOrNull(row.deletedAt),
+    });
   }
   return result;
 }
@@ -158,7 +221,8 @@ router.get("/dms", async (req, res): Promise<void> => {
   // threads count everything from them).
   const unreadCounts = await Promise.all(
     threads.map(async (thread) => {
-      const otherUserId = thread.userAId === userId ? thread.userBId : thread.userAId;
+      const otherUserId =
+        thread.userAId === userId ? thread.userBId : thread.userAId;
       const { myLastReadAt } = getReadTimestamps(thread, userId);
       const rows = await db
         .select({ id: dmMessagesTable.id })
@@ -167,7 +231,9 @@ router.get("/dms", async (req, res): Promise<void> => {
           and(
             eq(dmMessagesTable.threadId, thread.id),
             eq(dmMessagesTable.senderId, otherUserId),
-            myLastReadAt ? gt(dmMessagesTable.createdAt, myLastReadAt) : undefined,
+            myLastReadAt
+              ? gt(dmMessagesTable.createdAt, myLastReadAt)
+              : undefined,
           ),
         );
       return { threadId: thread.id, count: rows.length };
@@ -178,7 +244,8 @@ router.get("/dms", async (req, res): Promise<void> => {
   );
 
   const result = threads.map((thread) => {
-    const otherUserId = thread.userAId === userId ? thread.userBId : thread.userAId;
+    const otherUserId =
+      thread.userAId === userId ? thread.userBId : thread.userAId;
     const otherUser = otherUserById.get(otherUserId);
     const lastMessage = lastMessageByThread.get(thread.id);
     const { myLastReadAt, otherLastReadAt } = getReadTimestamps(thread, userId);
@@ -189,7 +256,9 @@ router.get("/dms", async (req, res): Promise<void> => {
       otherUserEmail: otherUser?.email ?? "",
       otherUserAvatarUrl: otherUser?.avatarUrl ?? null,
       otherUserPublicKey: otherUser?.publicKey ?? null,
-      otherUserHasEncryptionKey: keyHolderSet.has(`${thread.id}:${otherUserId}`),
+      otherUserHasEncryptionKey: keyHolderSet.has(
+        `${thread.id}:${otherUserId}`,
+      ),
       createdAt: toIso(thread.createdAt),
       lastMessageAt: toIsoOrNull(lastMessage?.createdAt),
       lastMessagePreview: lastMessage?.content ?? null,
@@ -291,7 +360,8 @@ router.get("/dms/:threadId", async (req, res): Promise<void> => {
     return;
   }
 
-  const otherUserId = thread.userAId === userId ? thread.userBId : thread.userAId;
+  const otherUserId =
+    thread.userAId === userId ? thread.userBId : thread.userAId;
   const [otherUser] = await db
     .select()
     .from(usersTable)
@@ -301,7 +371,10 @@ router.get("/dms/:threadId", async (req, res): Promise<void> => {
     .select({ userId: dmKeysTable.userId })
     .from(dmKeysTable)
     .where(
-      and(eq(dmKeysTable.threadId, threadId), eq(dmKeysTable.userId, otherUserId)),
+      and(
+        eq(dmKeysTable.threadId, threadId),
+        eq(dmKeysTable.userId, otherUserId),
+      ),
     );
 
   const [lastMessage] = await db
@@ -362,7 +435,10 @@ router.delete("/dms/:threadId", async (req, res): Promise<void> => {
   // Notify the other participant, if currently connected, before the row
   // (and its cascading messages/keys) disappears out from under them —
   // mirrors deleteGroup's "group-deleted" broadcast.
-  broadcastToThread(threadId, { type: "dm-thread-deleted", threadId: String(threadId) });
+  broadcastToThread(threadId, {
+    type: "dm-thread-deleted",
+    threadId: String(threadId),
+  });
 
   await db.delete(dmThreadsTable).where(eq(dmThreadsTable.id, threadId));
 
@@ -514,6 +590,8 @@ router.get("/dms/:threadId/messages", async (req, res): Promise<void> => {
       fileName: dmMessagesTable.fileName,
       mimeType: dmMessagesTable.mimeType,
       fileSize: dmMessagesTable.fileSize,
+      durationSeconds: dmMessagesTable.durationSeconds,
+      replyToId: dmMessagesTable.replyToId,
       createdAt: dmMessagesTable.createdAt,
       editedAt: dmMessagesTable.editedAt,
       deletedAt: dmMessagesTable.deletedAt,
@@ -528,6 +606,9 @@ router.get("/dms/:threadId/messages", async (req, res): Promise<void> => {
   const reactionsByMessageId = await getDmReactionsByMessageId(
     rows.map((r) => r.id),
   );
+  const replyPreviewsByReplyToId = await getDmReplyPreviewsByReplyToId(
+    rows.flatMap((r) => (r.replyToId ? [r.replyToId] : [])),
+  );
 
   res.json(
     rows.map((row) =>
@@ -535,6 +616,10 @@ router.get("/dms/:threadId/messages", async (req, res): Promise<void> => {
         ...row,
         id: String(row.id),
         threadId: String(row.threadId),
+        replyToId: row.replyToId ? String(row.replyToId) : null,
+        replyTo: row.replyToId
+          ? (replyPreviewsByReplyToId.get(row.replyToId) ?? null)
+          : null,
         createdAt: toIso(row.createdAt),
         editedAt: toIsoOrNull(row.editedAt),
         deletedAt: toIsoOrNull(row.deletedAt),
@@ -544,65 +629,99 @@ router.get("/dms/:threadId/messages", async (req, res): Promise<void> => {
   );
 });
 
-router.post("/dms/:threadId/messages", messageSendRateLimit, async (req, res): Promise<void> => {
-  const threadId = parseThreadId(req.params.threadId);
-  if (threadId === null) {
-    res.status(404).json({ error: "Thread not found" });
-    return;
-  }
+router.post(
+  "/dms/:threadId/messages",
+  messageSendRateLimit,
+  async (req, res): Promise<void> => {
+    const threadId = parseThreadId(req.params.threadId);
+    if (threadId === null) {
+      res.status(404).json({ error: "Thread not found" });
+      return;
+    }
 
-  const userId = req.userId!;
-  const member = await isThreadParticipant(threadId, userId);
-  if (!member) {
-    res.status(404).json({ error: "Thread not found" });
-    return;
-  }
+    const userId = req.userId!;
+    const member = await isThreadParticipant(threadId, userId);
+    if (!member) {
+      res.status(404).json({ error: "Thread not found" });
+      return;
+    }
 
-  const parsed = SendDmMessageBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
+    const parsed = SendDmMessageBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
 
-  const [message] = await db
-    .insert(dmMessagesTable)
-    .values({
-      threadId,
-      senderId: userId,
-      content: parsed.data.content,
-      type: parsed.data.type ?? "text",
-      fileName: parsed.data.fileName ?? null,
-      mimeType: parsed.data.mimeType ?? null,
-      fileSize: parsed.data.fileSize ?? null,
-    })
-    .returning();
+    // Same defensive check as the group version: only accept a replyToId that
+    // points at a real message within this same thread.
+    let replyToId: number | null = null;
+    if (parsed.data.replyToId) {
+      const candidate = Number.parseInt(parsed.data.replyToId, 10);
+      if (Number.isFinite(candidate)) {
+        const [target] = await db
+          .select({ id: dmMessagesTable.id })
+          .from(dmMessagesTable)
+          .where(
+            and(
+              eq(dmMessagesTable.id, candidate),
+              eq(dmMessagesTable.threadId, threadId),
+            ),
+          );
+        if (target) replyToId = target.id;
+      }
+    }
 
-  const [sender] = await db
-    .select({ name: usersTable.name, avatarUrl: usersTable.avatarUrl })
-    .from(usersTable)
-    .where(eq(usersTable.id, userId));
+    const [message] = await db
+      .insert(dmMessagesTable)
+      .values({
+        threadId,
+        senderId: userId,
+        content: parsed.data.content,
+        type: parsed.data.type ?? "text",
+        fileName: parsed.data.fileName ?? null,
+        mimeType: parsed.data.mimeType ?? null,
+        fileSize: parsed.data.fileSize ?? null,
+        durationSeconds: parsed.data.durationSeconds ?? null,
+        replyToId,
+      })
+      .returning();
 
-  const payload = SendDmMessageResponse.parse({
-    id: String(message.id),
-    threadId: String(message.threadId),
-    senderId: message.senderId,
-    senderName: sender?.name ?? "Family Member",
-    senderAvatarUrl: sender?.avatarUrl ?? null,
-    content: message.content,
-    type: message.type,
-    fileName: message.fileName,
-    mimeType: message.mimeType,
-    fileSize: message.fileSize,
-    createdAt: toIso(message.createdAt),
-    editedAt: null,
-    deletedAt: null,
-    reactions: [],
-  });
+    const [sender] = await db
+      .select({ name: usersTable.name, avatarUrl: usersTable.avatarUrl })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId));
 
-  broadcastToThread(threadId, { type: "message", message: payload });
+    const replyTo = message.replyToId
+      ? ((await getDmReplyPreviewsByReplyToId([message.replyToId])).get(
+          message.replyToId,
+        ) ?? null)
+      : null;
 
-  res.status(201).json(payload);
-});
+    const payload = SendDmMessageResponse.parse({
+      id: String(message.id),
+      threadId: String(message.threadId),
+      senderId: message.senderId,
+      senderName: sender?.name ?? "Family Member",
+      senderAvatarUrl: sender?.avatarUrl ?? null,
+      content: message.content,
+      type: message.type,
+      fileName: message.fileName,
+      mimeType: message.mimeType,
+      fileSize: message.fileSize,
+      durationSeconds: message.durationSeconds,
+      replyToId: message.replyToId ? String(message.replyToId) : null,
+      replyTo,
+      createdAt: toIso(message.createdAt),
+      editedAt: null,
+      deletedAt: null,
+      reactions: [],
+    });
+
+    broadcastToThread(threadId, { type: "message", message: payload });
+
+    res.status(201).json(payload);
+  },
+);
 
 router.patch(
   "/dms/:threadId/messages/:messageId",
@@ -660,7 +779,13 @@ router.patch(
       .from(usersTable)
       .where(eq(usersTable.id, userId));
 
-    const reactions = (await getDmReactionsByMessageId([messageId])).get(messageId) ?? [];
+    const reactions =
+      (await getDmReactionsByMessageId([messageId])).get(messageId) ?? [];
+    const replyTo = updated.replyToId
+      ? ((await getDmReplyPreviewsByReplyToId([updated.replyToId])).get(
+          updated.replyToId,
+        ) ?? null)
+      : null;
 
     const payload = EditDmMessageResponse.parse({
       id: String(updated.id),
@@ -673,6 +798,9 @@ router.patch(
       fileName: updated.fileName,
       mimeType: updated.mimeType,
       fileSize: updated.fileSize,
+      durationSeconds: updated.durationSeconds,
+      replyToId: updated.replyToId ? String(updated.replyToId) : null,
+      replyTo,
       createdAt: toIso(updated.createdAt),
       editedAt: toIsoOrNull(updated.editedAt),
       deletedAt: toIsoOrNull(updated.deletedAt),
@@ -737,7 +865,13 @@ router.delete(
       .from(usersTable)
       .where(eq(usersTable.id, userId));
 
-    const reactions = (await getDmReactionsByMessageId([messageId])).get(messageId) ?? [];
+    const reactions =
+      (await getDmReactionsByMessageId([messageId])).get(messageId) ?? [];
+    const replyTo = updated.replyToId
+      ? ((await getDmReplyPreviewsByReplyToId([updated.replyToId])).get(
+          updated.replyToId,
+        ) ?? null)
+      : null;
 
     const payload = DeleteDmMessageResponse.parse({
       id: String(updated.id),
@@ -750,6 +884,9 @@ router.delete(
       fileName: updated.fileName,
       mimeType: updated.mimeType,
       fileSize: updated.fileSize,
+      durationSeconds: updated.durationSeconds,
+      replyToId: updated.replyToId ? String(updated.replyToId) : null,
+      replyTo,
       createdAt: toIso(updated.createdAt),
       editedAt: toIsoOrNull(updated.editedAt),
       deletedAt: toIsoOrNull(updated.deletedAt),
@@ -833,6 +970,12 @@ router.put(
       .from(usersTable)
       .where(eq(usersTable.id, full.senderId));
 
+    const replyTo = full.replyToId
+      ? ((await getDmReplyPreviewsByReplyToId([full.replyToId])).get(
+          full.replyToId,
+        ) ?? null)
+      : null;
+
     broadcastToThread(threadId, {
       type: "message-updated",
       message: SendDmMessageResponse.parse({
@@ -846,6 +989,9 @@ router.put(
         fileName: full.fileName,
         mimeType: full.mimeType,
         fileSize: full.fileSize,
+        durationSeconds: full.durationSeconds,
+        replyToId: full.replyToId ? String(full.replyToId) : null,
+        replyTo,
         createdAt: toIso(full.createdAt),
         editedAt: toIsoOrNull(full.editedAt),
         deletedAt: toIsoOrNull(full.deletedAt),
