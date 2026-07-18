@@ -1,4 +1,4 @@
-// End-to-end encryption for Family Chat.
+// End-to-end encryption for Mavik Connect.
 //
 // Design: every user has an RSA-OAEP keypair. The private key never leaves
 // the browser (stored in localStorage). Every group has a random AES-256-GCM

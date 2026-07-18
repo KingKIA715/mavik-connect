@@ -1,1 +1,1 @@
-- [E2E message encryption design](family-chat-e2e-encryption.md) — client-side RSA+AES scheme for Family Chat; server only ever stores wrapped keys/ciphertext.
+- [E2E message encryption design](mavik-connect-e2e-encryption.md) — client-side RSA+AES scheme for Mavik Connect; server only ever stores wrapped keys/ciphertext.

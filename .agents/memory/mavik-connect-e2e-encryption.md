@@ -1,9 +1,9 @@
 ---
-name: Family Chat end-to-end encryption design
-description: How message/group-key encryption is architected in the family-chat artifact, and the tradeoffs behind it.
+name: Mavik Connect end-to-end encryption design
+description: How message/group-key encryption is architected in the mavik-connect artifact, and the tradeoffs behind it.
 ---
 
-Family Chat messages are encrypted client-side so the server never sees plaintext content or group keys.
+Mavik Connect messages are encrypted client-side so the server never sees plaintext content or group keys.
 
 - Each user has an RSA-OAEP keypair. The private key lives only in `localStorage` (keyed per user id) and is never uploaded. Only the public key is sent to the server.
 - Each group has one AES-GCM key generated client-side. It's wrapped (RSA-encrypted) once per member with that member's public key; the server stores only wrapped copies, never the raw group key.

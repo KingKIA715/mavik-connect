@@ -2,7 +2,7 @@ kind = "web"
 previewPath = "/"
 title = "Mavik Connect"
 version = "1.0.0"
-id = "artifacts/family-chat"
+id = "artifacts/mavik-connect"
 router = "path"
 
 [[integratedSkills]]
@@ -15,11 +15,11 @@ paths = [ "/" ]
 localPort = 20730
 
 [services.development]
-run = "pnpm --filter @workspace/family-chat run dev"
+run = "pnpm --filter @workspace/mavik-connect run dev"
 
 [services.production]
-build = [ "pnpm", "--filter", "@workspace/family-chat", "run", "build" ]
-publicDir = "artifacts/family-chat/dist/public"
+build = [ "pnpm", "--filter", "@workspace/mavik-connect", "run", "build" ]
+publicDir = "artifacts/mavik-connect/dist/public"
 serve = "static"
 
 [[services.production.rewrites]]

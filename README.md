@@ -49,7 +49,7 @@ have one available in this sandbox to push against.
 - No changes needed to the WS hub — it just rebroadcasts the same message
   payload, so new fields ride along automatically.
 
-### 4. Frontend (`artifacts/family-chat`)
+### 4. Frontend (`artifacts/mavik-connect`)
 - **Reply/Quote**: hover a message to see a reply icon; picking it shows a
   preview bar above the composer, and sent replies render a quoted snippet
   (tap it to scroll to the original) above the bubble.
