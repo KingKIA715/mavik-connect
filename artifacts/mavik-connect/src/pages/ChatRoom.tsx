@@ -1300,6 +1300,26 @@ export default function ChatRoom() {
               if (matchingMessageIds && !matchingMessageIds.has(msg.id))
                 return null;
 
+              // System messages (e.g. "Jamie left the group.") are
+              // server-generated, plain text, and not tied to a
+              // conversational sender — render them centered and muted,
+              // with no avatar, sender name, or message actions, similar
+              // to how "This message was deleted" renders inline but
+              // without the bubble chrome.
+              if (msg.type === "system") {
+                return (
+                  <div
+                    key={msg.id}
+                    id={`message-${msg.id}`}
+                    className="flex justify-center my-1"
+                  >
+                    <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full text-center">
+                      {msg.content}
+                    </span>
+                  </div>
+                );
+              }
+
               return (
                 <div
                   key={msg.id}

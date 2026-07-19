@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, ilike, ne, or } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -10,6 +10,7 @@ import {
 import {
   GetMyProfileResponse,
   SearchUserByEmailResponse,
+  SearchUsersByNameResponseItem,
   SetMyPublicKeyBody,
   UpdateMyProfileBody,
   GetKeyHistoryResponseItem,
@@ -20,7 +21,8 @@ import { toIso } from "../lib/serialize";
 const router: IRouter = Router();
 
 router.get("/users/search", requireAuth, async (req, res): Promise<void> => {
-  const email = typeof req.query.email === "string" ? req.query.email : undefined;
+  const email =
+    typeof req.query.email === "string" ? req.query.email : undefined;
   if (!email) {
     res.status(404).json({ error: "No user with that email" });
     return;
@@ -46,6 +48,53 @@ router.get("/users/search", requireAuth, async (req, res): Promise<void> => {
   );
 });
 
+router.get(
+  "/users/search/by-name",
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const name =
+      typeof req.query.name === "string" ? req.query.name.trim() : "";
+    if (!name) {
+      res.json([]);
+      return;
+    }
+
+    // Open name search over all registered users (not scoped to shared
+    // groups or existing contacts — see the openapi description). Matches
+    // firstName, lastName, or the combined display name, case-insensitive,
+    // partial. Excludes the caller themselves.
+    const pattern = `%${name}%`;
+    const rows = await db
+      .select()
+      .from(usersTable)
+      .where(
+        and(
+          ne(usersTable.id, req.userId!),
+          or(
+            ilike(usersTable.firstName, pattern),
+            ilike(usersTable.lastName, pattern),
+            ilike(usersTable.name, pattern),
+          ),
+        ),
+      )
+      .limit(20);
+
+    res.json(
+      rows.map((user) =>
+        SearchUsersByNameResponseItem.parse({
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          avatarUrl: user.avatarUrl,
+          publicKey: user.publicKey,
+        }),
+      ),
+    );
+  },
+);
+
 router.get("/users/me", requireAuth, async (req, res): Promise<void> => {
   const [user] = await db
     .select()
@@ -57,7 +106,9 @@ router.get("/users/me", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(GetMyProfileResponse.parse({ ...user, createdAt: toIso(user.createdAt) }));
+  res.json(
+    GetMyProfileResponse.parse({ ...user, createdAt: toIso(user.createdAt) }),
+  );
 });
 
 router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
@@ -67,9 +118,22 @@ router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  // `name` is a derived display name recomputed here from firstName/lastName
+  // so every other consumer of usersTable.name (messages, DM lists, member
+  // lists, etc.) keeps working unchanged.
+  const name = [parsed.data.firstName, parsed.data.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
   const [user] = await db
     .update(usersTable)
-    .set({ name: parsed.data.name })
+    .set({
+      firstName: parsed.data.firstName,
+      lastName: parsed.data.lastName,
+      phoneNumber: parsed.data.phoneNumber ?? null,
+      name,
+    })
     .where(eq(usersTable.id, req.userId!))
     .returning();
 
@@ -78,7 +142,9 @@ router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(GetMyProfileResponse.parse({ ...user, createdAt: toIso(user.createdAt) }));
+  res.json(
+    GetMyProfileResponse.parse({ ...user, createdAt: toIso(user.createdAt) }),
+  );
 });
 
 router.put(
@@ -122,7 +188,9 @@ router.put(
       // chat. This does NOT recover anything by itself — it just clears
       // the stale state so the normal "share key with someone who doesn't
       // have it yet" flow can do its job again.
-      await db.delete(groupKeysTable).where(eq(groupKeysTable.userId, req.userId!));
+      await db
+        .delete(groupKeysTable)
+        .where(eq(groupKeysTable.userId, req.userId!));
       await db.delete(dmKeysTable).where(eq(dmKeysTable.userId, req.userId!));
     }
 
@@ -135,7 +203,9 @@ router.put(
       userAgent: req.headers["user-agent"] ?? null,
     });
 
-    res.json(GetMyProfileResponse.parse({ ...user, createdAt: toIso(user.createdAt) }));
+    res.json(
+      GetMyProfileResponse.parse({ ...user, createdAt: toIso(user.createdAt) }),
+    );
   },
 );
 

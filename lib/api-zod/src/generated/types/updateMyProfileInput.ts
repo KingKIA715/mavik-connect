@@ -8,5 +8,13 @@
 
 export interface UpdateMyProfileInput {
   /** @minLength 1 */
-  name: string;
+  firstName: string;
+  /** @minLength 1 */
+  lastName: string;
+  /**
+     * E.164 format (e.g. +14155551234), or null to clear it. Format-validated server-side; not verified to belong to the user.
+     * @nullable
+     * @pattern ^\+[1-9]\d{6,14}$
+     */
+  phoneNumber?: string | null;
 }

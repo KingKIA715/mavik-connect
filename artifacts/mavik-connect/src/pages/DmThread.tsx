@@ -11,6 +11,7 @@ import {
   useRequestDmKeyAccess,
   useMarkDmThreadRead,
   useDeleteDmThread,
+  useRespondToDmThread,
   useToggleDmMessageReaction,
   useGetMyProfile,
   getListDmMessagesQueryKey,
@@ -113,6 +114,45 @@ export default function DmThread() {
   const requestDmKeyAccess = useRequestDmKeyAccess();
   const markThreadRead = useMarkDmThreadRead();
   const deleteDmThread = useDeleteDmThread();
+  const respondToDmThread = useRespondToDmThread();
+  const [isRespondingToRequest, setIsRespondingToRequest] = useState(false);
+
+  // Message-request state (see PUT /dms/{threadId}/respond and canSendDm on
+  // the server — this mirrors that same permission logic client-side so
+  // the composer reflects it without a round trip).
+  const isIncomingPendingRequest =
+    thread?.status === "pending" && !thread.isInitiatedByMe;
+  const isOutgoingPendingRequest =
+    thread?.status === "pending" && thread.isInitiatedByMe;
+  const isBlockedByRejection =
+    thread?.status === "rejected" && thread.isInitiatedByMe;
+  const canSendMessage = !isIncomingPendingRequest && !isBlockedByRejection;
+
+  const handleRespondToRequest = async (action: "accept" | "reject") => {
+    if (!threadId) return;
+    setIsRespondingToRequest(true);
+    try {
+      await respondToDmThread.mutateAsync({ threadId, data: { action } });
+      queryClient.invalidateQueries({
+        queryKey: getGetDmThreadQueryKey(threadId),
+      });
+      queryClient.invalidateQueries({ queryKey: getListDmThreadsQueryKey() });
+      if (action === "reject") {
+        toast({ title: "Message request declined" });
+        navigate("/app");
+      } else {
+        toast({ title: "Message request accepted" });
+      }
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Couldn't respond to request",
+        description: err?.message ?? "Please try again.",
+      });
+    } finally {
+      setIsRespondingToRequest(false);
+    }
+  };
   const toggleReaction = useToggleDmMessageReaction();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -183,6 +223,7 @@ export default function DmThread() {
     onDmKeyReadyRef,
     onDmKeyRequestedRef,
     onDmThreadDeletedRef,
+    onDmRequestRespondedRef,
     onTypingRef,
   } = useThreadWebSocket(threadId);
 
@@ -220,6 +261,19 @@ export default function DmThread() {
       );
     };
   }, [threadId, queryClient, onMessageUpdateRef]);
+
+  // Live update for the initiator's UI when the recipient accepts/rejects
+  // this thread's message request (see PUT /dms/{threadId}/respond) — no
+  // reload needed to unlock (or lock) the composer.
+  useEffect(() => {
+    onDmRequestRespondedRef.current = () => {
+      if (!threadId) return;
+      queryClient.invalidateQueries({
+        queryKey: getGetDmThreadQueryKey(threadId),
+      });
+      queryClient.invalidateQueries({ queryKey: getListDmThreadsQueryKey() });
+    };
+  }, [threadId, queryClient, onDmRequestRespondedRef]);
 
   // Live "Seen" updates: when the other participant marks this thread read
   // (from their own device), update their last-read timestamp here without
@@ -482,7 +536,7 @@ export default function DmThread() {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !threadId || !dmKey) return;
+    if (!file || !threadId || !dmKey || !canSendMessage) return;
 
     if (file.size > MAX_FILE_SIZE) {
       toast({
@@ -580,7 +634,13 @@ export default function DmThread() {
     const recorder = mediaRecorderRef.current;
     if (!recorder) return;
     const onStop = async () => {
-      if (recordedChunksRef.current.length === 0 || !threadId || !dmKey) return;
+      if (
+        recordedChunksRef.current.length === 0 ||
+        !threadId ||
+        !dmKey ||
+        !canSendMessage
+      )
+        return;
       const blob = new Blob(recordedChunksRef.current, {
         type: recorder.mimeType || "audio/webm",
       });
@@ -618,7 +678,7 @@ export default function DmThread() {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim() || !threadId || !dmKey) return;
+    if (!content.trim() || !threadId || !dmKey || !canSendMessage) return;
 
     const encrypted = await encryptMessage(dmKey, content);
     sendDmMessage.mutate(
@@ -1165,99 +1225,144 @@ export default function DmThread() {
         )}
       </div>
       <div className="flex-none p-4 pt-0 bg-white border-t border-border shadow-[0_-4px_20px_-15px_rgba(0,0,0,0.1)]">
-        <form
-          onSubmit={handleSend}
-          className="max-w-3xl mx-auto flex items-end gap-3 relative"
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            onChange={handleFileSelect}
-          />
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="rounded-full w-12 h-12 flex-shrink-0 text-muted-foreground"
-            disabled={!dmKey || isUploading || isRecording}
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Attach a file"
-          >
-            <Paperclip className="w-5 h-5" />
-          </Button>
-          {isRecording ? (
-            <div className="flex-1 flex items-center gap-3 bg-muted/30 rounded-full px-6 py-3">
-              <span className="w-2.5 h-2.5 rounded-full bg-destructive animate-pulse flex-shrink-0" />
-              <span className="text-sm font-medium tabular-nums">
-                {formatDuration(recordingSeconds)}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                Recording voice message…
-              </span>
-              <div className="ml-auto flex items-center gap-1">
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="rounded-full w-9 h-9"
-                  onClick={handleCancelRecording}
-                  aria-label="Cancel recording"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-                <Button
-                  type="button"
-                  size="icon"
-                  className="rounded-full w-9 h-9"
-                  onClick={handleStopRecording}
-                  aria-label="Stop and send recording"
-                >
-                  <Square className="w-4 h-4" />
-                </Button>
-              </div>
+        {isIncomingPendingRequest ? (
+          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 bg-muted/40 rounded-xl px-4 py-3">
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {thread.otherUserName}
+              </span>{" "}
+              wants to send you a message.
+            </p>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isRespondingToRequest}
+                onClick={() => handleRespondToRequest("reject")}
+              >
+                Decline
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={isRespondingToRequest}
+                onClick={() => handleRespondToRequest("accept")}
+              >
+                Accept
+              </Button>
             </div>
-          ) : (
-            <Input
-              ref={contentInputRef}
-              value={content}
-              onChange={(e) => {
-                setContent(e.target.value);
-                handleTyping();
-              }}
-              placeholder={
-                isUploading
-                  ? "Sending file…"
-                  : !dmKey
-                    ? "Waiting for encryption access…"
-                    : "Type a message..."
-              }
-              className="flex-1 bg-muted/30 border-muted-border rounded-full px-6 py-6 text-base shadow-inner focus-visible:ring-1"
-            />
-          )}
-          {!isRecording && !content.trim() && (
-            <Button
-              type="button"
-              size="icon"
-              className="rounded-full w-12 h-12 shadow-md flex-shrink-0 absolute right-1 bottom-1"
-              disabled={!dmKey || isUploading || isSendingVoice}
-              onClick={handleStartRecording}
-              aria-label="Record a voice message"
+          </div>
+        ) : isBlockedByRejection ? (
+          <div className="max-w-3xl mx-auto text-center text-sm text-muted-foreground bg-muted/40 rounded-xl px-4 py-3">
+            {thread.otherUserName} has declined your message request. You can no
+            longer send messages here.
+          </div>
+        ) : (
+          <>
+            {isOutgoingPendingRequest && (
+              <div className="max-w-3xl mx-auto text-xs text-muted-foreground px-2 pb-2">
+                Message request sent — {thread.otherUserName} hasn't accepted
+                yet, but you can keep sending messages.
+              </div>
+            )}
+            <form
+              onSubmit={handleSend}
+              className="max-w-3xl mx-auto flex items-end gap-3 relative"
             >
-              <Mic className="w-5 h-5" />
-            </Button>
-          )}
-          {!isRecording && !!content.trim() && (
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!content.trim() || sendDmMessage.isPending || !dmKey}
-              className="rounded-full w-12 h-12 shadow-md flex-shrink-0 absolute right-1 bottom-1"
-            >
-              <Send className="w-5 h-5 ml-1" />
-            </Button>
-          )}
-        </form>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="rounded-full w-12 h-12 flex-shrink-0 text-muted-foreground"
+                disabled={!dmKey || isUploading || isRecording}
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Attach a file"
+              >
+                <Paperclip className="w-5 h-5" />
+              </Button>
+              {isRecording ? (
+                <div className="flex-1 flex items-center gap-3 bg-muted/30 rounded-full px-6 py-3">
+                  <span className="w-2.5 h-2.5 rounded-full bg-destructive animate-pulse flex-shrink-0" />
+                  <span className="text-sm font-medium tabular-nums">
+                    {formatDuration(recordingSeconds)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Recording voice message…
+                  </span>
+                  <div className="ml-auto flex items-center gap-1">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="rounded-full w-9 h-9"
+                      onClick={handleCancelRecording}
+                      aria-label="Cancel recording"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      className="rounded-full w-9 h-9"
+                      onClick={handleStopRecording}
+                      aria-label="Stop and send recording"
+                    >
+                      <Square className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Input
+                  ref={contentInputRef}
+                  value={content}
+                  onChange={(e) => {
+                    setContent(e.target.value);
+                    handleTyping();
+                  }}
+                  placeholder={
+                    isUploading
+                      ? "Sending file…"
+                      : !dmKey
+                        ? "Waiting for encryption access…"
+                        : "Type a message..."
+                  }
+                  className="flex-1 bg-muted/30 border-muted-border rounded-full px-6 py-6 text-base shadow-inner focus-visible:ring-1"
+                />
+              )}
+              {!isRecording && !content.trim() && (
+                <Button
+                  type="button"
+                  size="icon"
+                  className="rounded-full w-12 h-12 shadow-md flex-shrink-0 absolute right-1 bottom-1"
+                  disabled={!dmKey || isUploading || isSendingVoice}
+                  onClick={handleStartRecording}
+                  aria-label="Record a voice message"
+                >
+                  <Mic className="w-5 h-5" />
+                </Button>
+              )}
+              {!isRecording && !!content.trim() && (
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={
+                    !content.trim() || sendDmMessage.isPending || !dmKey
+                  }
+                  className="rounded-full w-12 h-12 shadow-md flex-shrink-0 absolute right-1 bottom-1"
+                >
+                  <Send className="w-5 h-5 ml-1" />
+                </Button>
+              )}
+            </form>
+          </>
+        )}
       </div>
 
       <AlertDialog

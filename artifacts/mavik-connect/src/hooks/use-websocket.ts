@@ -130,6 +130,7 @@ type DmWsMessage =
   | { type: "dm-key-ready" }
   | { type: "dm-key-requested"; requesterId: string }
   | { type: "dm-thread-deleted"; threadId: string }
+  | { type: "dm-request-responded"; threadId: string; status: string }
   | { type: "typing"; userId: string };
 
 /**
@@ -151,6 +152,9 @@ export function useThreadWebSocket(threadId?: string) {
     null,
   );
   const onDmThreadDeletedRef = useRef<(() => void) | null>(null);
+  const onDmRequestRespondedRef = useRef<((status: string) => void) | null>(
+    null,
+  );
   const onTypingRef = useRef<((userId: string) => void) | null>(null);
 
   useEffect(() => {
@@ -195,6 +199,11 @@ export function useThreadWebSocket(threadId?: string) {
           onDmThreadDeletedRef.current
         ) {
           onDmThreadDeletedRef.current();
+        } else if (
+          data.type === "dm-request-responded" &&
+          onDmRequestRespondedRef.current
+        ) {
+          onDmRequestRespondedRef.current(data.status);
         } else if (data.type === "typing" && onTypingRef.current) {
           onTypingRef.current(data.userId);
         }
@@ -226,6 +235,7 @@ export function useThreadWebSocket(threadId?: string) {
     onDmKeyReadyRef,
     onDmKeyRequestedRef,
     onDmThreadDeletedRef,
+    onDmRequestRespondedRef,
     onTypingRef,
   };
 }

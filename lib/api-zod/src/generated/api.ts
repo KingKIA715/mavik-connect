@@ -24,7 +24,10 @@ export const HealthCheckResponse = zod.object({
 export const GetMyProfileResponse = zod.object({
   "id": zod.string(),
   "email": zod.string(),
-  "name": zod.string(),
+  "name": zod.string().describe('Derived display name, recomputed server-side from firstName\/lastName on every profile update.\n'),
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
+  "phoneNumber": zod.string().nullish().describe('E.164 format (e.g. +14155551234). Format-validated only — not verified to belong to the user.\n'),
   "avatarUrl": zod.string().nullish(),
   "publicKey": zod.string().nullish(),
   "createdAt": zod.string()
@@ -32,20 +35,27 @@ export const GetMyProfileResponse = zod.object({
 
 
 /**
- * Keeps this app's local display name (shown on messages, DM lists, member lists, etc.) in sync after the user edits their first/last name through Clerk. Call this right after a successful Clerk `user.update({ firstName, lastName })` on the frontend — this endpoint does not talk to Clerk itself.
- * @summary Update the current user's display name
+ * Updates firstName, lastName, and phoneNumber as plain profile fields directly on this app's own users table — no Clerk call, no SMS/OTP verification. The server recomputes the derived `name` field from firstName/lastName and returns it in the response.
+ * @summary Update the current user's profile fields
  */
 
 
+export const updateMyProfileBodyPhoneNumberRegExp = new RegExp('^\\+[1-9]\\d{6,14}$');
+
 
 export const UpdateMyProfileBody = zod.object({
-  "name": zod.string().min(1)
+  "firstName": zod.string().min(1),
+  "lastName": zod.string().min(1),
+  "phoneNumber": zod.string().regex(updateMyProfileBodyPhoneNumberRegExp).nullish().describe('E.164 format (e.g. +14155551234), or null to clear it. Format-validated server-side; not verified to belong to the user.\n')
 })
 
 export const UpdateMyProfileResponse = zod.object({
   "id": zod.string(),
   "email": zod.string(),
-  "name": zod.string(),
+  "name": zod.string().describe('Derived display name, recomputed server-side from firstName\/lastName on every profile update.\n'),
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
+  "phoneNumber": zod.string().nullish().describe('E.164 format (e.g. +14155551234). Format-validated only — not verified to belong to the user.\n'),
   "avatarUrl": zod.string().nullish(),
   "publicKey": zod.string().nullish(),
   "createdAt": zod.string()
@@ -66,7 +76,10 @@ export const SetMyPublicKeyBody = zod.object({
 export const SetMyPublicKeyResponse = zod.object({
   "id": zod.string(),
   "email": zod.string(),
-  "name": zod.string(),
+  "name": zod.string().describe('Derived display name, recomputed server-side from firstName\/lastName on every profile update.\n'),
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
+  "phoneNumber": zod.string().nullish().describe('E.164 format (e.g. +14155551234). Format-validated only — not verified to belong to the user.\n'),
   "avatarUrl": zod.string().nullish(),
   "publicKey": zod.string().nullish(),
   "createdAt": zod.string()
@@ -96,9 +109,34 @@ export const SearchUserByEmailResponse = zod.object({
   "id": zod.string(),
   "email": zod.string(),
   "name": zod.string(),
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "publicKey": zod.string().nullish()
 })
+
+
+/**
+ * Open name search over all registered users — not limited to existing contacts or shared groups. Used to find someone to start a new DM with (see Item 2's message-request flow for what happens after a thread is created with someone new). Matches against firstName, lastName, or the combined display name. Excludes the caller. Returns an empty array (not 404) if nothing matches.
+ * @summary Search registered users by name (case-insensitive, partial match)
+ */
+
+
+
+export const SearchUsersByNameQueryParams = zod.object({
+  "name": zod.coerce.string().min(1)
+})
+
+export const SearchUsersByNameResponseItem = zod.object({
+  "id": zod.string(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "publicKey": zod.string().nullish()
+})
+export const SearchUsersByNameResponse = zod.array(SearchUsersByNameResponseItem)
 
 
 /**
@@ -283,7 +321,7 @@ export const MarkGroupReadResponse = zod.object({
 
 
 /**
- * Any member can remove themselves (leave the group). Removing someone else requires being the group's creator.
+ * Any member can remove themselves (leave the group). Removing someone else requires being the group's creator. Either way, a "system" message announcing the departure is inserted into the group's chat history and broadcast live to remaining members.
  * @summary Remove a member from a group, or leave it yourself
  */
 export const RemoveGroupMemberParams = zod.object({
@@ -324,7 +362,7 @@ export const ListMessagesResponseItem = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']).default(listMessagesResponseTypeDefault),
+  "type": zod.enum(['text', 'file', 'voice', 'system']).default(listMessagesResponseTypeDefault),
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
@@ -381,7 +419,7 @@ export const SendMessageResponse = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']).default(sendMessageResponseTypeDefault),
+  "type": zod.enum(['text', 'file', 'voice', 'system']).default(sendMessageResponseTypeDefault),
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
@@ -432,7 +470,7 @@ export const EditMessageResponse = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']).default(editMessageResponseTypeDefault),
+  "type": zod.enum(['text', 'file', 'voice', 'system']).default(editMessageResponseTypeDefault),
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
@@ -476,7 +514,7 @@ export const DeleteMessageResponse = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']).default(deleteMessageResponseTypeDefault),
+  "type": zod.enum(['text', 'file', 'voice', 'system']).default(deleteMessageResponseTypeDefault),
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
@@ -542,7 +580,9 @@ export const ListDmThreadsResponseItem = zod.object({
   "lastMessagePreview": zod.string().nullish(),
   "myLastReadAt": zod.string().nullish(),
   "otherUserLastReadAt": zod.string().nullish().describe('Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n'),
-  "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.')
+  "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.'),
+  "status": zod.enum(['pending', 'accepted', 'rejected']).describe('Message-request status. \"pending\": only the initiator can send, until the other side accepts\/rejects via PUT \/dms\/{threadId}\/respond. \"accepted\": both sides can send freely. \"rejected\": a one-directional permanent block on the initiator only — see canSendDm in the API server.\n'),
+  "isInitiatedByMe": zod.boolean().describe('Whether the current user was the one who started this thread.')
 })
 export const ListDmThreadsResponse = zod.array(ListDmThreadsResponseItem)
 
@@ -567,7 +607,9 @@ export const CreateDmThreadResponse = zod.object({
   "lastMessagePreview": zod.string().nullish(),
   "myLastReadAt": zod.string().nullish(),
   "otherUserLastReadAt": zod.string().nullish().describe('Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n'),
-  "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.')
+  "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.'),
+  "status": zod.enum(['pending', 'accepted', 'rejected']).describe('Message-request status. \"pending\": only the initiator can send, until the other side accepts\/rejects via PUT \/dms\/{threadId}\/respond. \"accepted\": both sides can send freely. \"rejected\": a one-directional permanent block on the initiator only — see canSendDm in the API server.\n'),
+  "isInitiatedByMe": zod.boolean().describe('Whether the current user was the one who started this thread.')
 })
 
 
@@ -591,7 +633,9 @@ export const GetDmThreadResponse = zod.object({
   "lastMessagePreview": zod.string().nullish(),
   "myLastReadAt": zod.string().nullish(),
   "otherUserLastReadAt": zod.string().nullish().describe('Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n'),
-  "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.')
+  "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.'),
+  "status": zod.enum(['pending', 'accepted', 'rejected']).describe('Message-request status. \"pending\": only the initiator can send, until the other side accepts\/rejects via PUT \/dms\/{threadId}\/respond. \"accepted\": both sides can send freely. \"rejected\": a one-directional permanent block on the initiator only — see canSendDm in the API server.\n'),
+  "isInitiatedByMe": zod.boolean().describe('Whether the current user was the one who started this thread.')
 })
 
 
@@ -663,6 +707,23 @@ export const MarkDmThreadReadParams = zod.object({
 
 export const MarkDmThreadReadResponse = zod.object({
   "lastReadAt": zod.string()
+})
+
+
+/**
+ * Only the non-initiator (recipient) of a "pending" thread can call this, and only while it's still pending. Rejecting is a one-directional permanent block: the initiator can never send into this thread again, but the recipient still can (e.g. if they change their mind and reach out themselves later). Broadcasts a WS "dm-request-responded" event so the initiator's UI updates live.
+ * @summary Accept or reject a pending DM message request
+ */
+export const RespondToDmThreadParams = zod.object({
+  "threadId": zod.coerce.string()
+})
+
+export const RespondToDmThreadBody = zod.object({
+  "action": zod.enum(['accept', 'reject'])
+})
+
+export const RespondToDmThreadResponse = zod.object({
+  "status": zod.enum(['accepted', 'rejected'])
 })
 
 

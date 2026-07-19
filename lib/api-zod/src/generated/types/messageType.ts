@@ -13,4 +13,5 @@ export const MessageType = {
   text: 'text',
   file: 'file',
   voice: 'voice',
+  system: 'system',
 } as const;

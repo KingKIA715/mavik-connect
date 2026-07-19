@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.2.0
  */
+import type { DmThreadStatus } from './dmThreadStatus';
 
 export interface DmThread {
   id: string;
@@ -30,4 +31,8 @@ export interface DmThread {
   otherUserLastReadAt?: string | null;
   /** Messages from the other participant created after myLastReadAt. */
   unreadCount: number;
+  /** Message-request status. "pending": only the initiator can send, until the other side accepts/rejects via PUT /dms/{threadId}/respond. "accepted": both sides can send freely. "rejected": a one-directional permanent block on the initiator only — see canSendDm in the API server. */
+  status: DmThreadStatus;
+  /** Whether the current user was the one who started this thread. */
+  isInitiatedByMe: boolean;
 }

@@ -23,6 +23,8 @@ import {
   SetDmKeyBody,
   SetDmKeyResponse,
   MarkDmThreadReadResponse,
+  RespondToDmThreadBody,
+  RespondToDmThreadResponse,
   ToggleDmMessageReactionBody,
   ToggleDmMessageReactionResponse,
 } from "@workspace/api-zod";
@@ -37,6 +39,7 @@ import {
   findOrCreateThread,
   getReadTimestamps,
   myLastReadColumn,
+  canSendDm,
 } from "../lib/dmAccess";
 import { broadcastToThread, sendToUserInThread } from "../ws/hub";
 import { toIso, toIsoOrNull } from "../lib/serialize";
@@ -268,6 +271,8 @@ router.get("/dms", async (req, res): Promise<void> => {
       myLastReadAt: toIsoOrNull(myLastReadAt),
       otherUserLastReadAt: toIsoOrNull(otherLastReadAt),
       unreadCount: unreadCountByThread.get(thread.id) ?? 0,
+      status: thread.status,
+      isInitiatedByMe: thread.initiatorId === userId,
     };
   });
 
@@ -336,6 +341,8 @@ router.post("/dms", async (req, res): Promise<void> => {
         getReadTimestamps(thread, userId).otherLastReadAt,
       ),
       unreadCount: 0,
+      status: thread.status,
+      isInitiatedByMe: thread.initiatorId === userId,
     }),
   );
 });
@@ -417,6 +424,8 @@ router.get("/dms/:threadId", async (req, res): Promise<void> => {
       myLastReadAt: toIsoOrNull(myLastReadAt),
       otherUserLastReadAt: toIsoOrNull(otherLastReadAt),
       unreadCount: unreadRows.length,
+      status: thread.status,
+      isInitiatedByMe: thread.initiatorId === userId,
     }),
   );
 });
@@ -477,6 +486,62 @@ router.put("/dms/:threadId/read", async (req, res): Promise<void> => {
   broadcastToThread(threadId, { type: "read", userId, lastReadAt: toIso(now) });
 
   res.json(MarkDmThreadReadResponse.parse({ lastReadAt: toIso(now) }));
+});
+
+router.put("/dms/:threadId/respond", async (req, res): Promise<void> => {
+  const threadId = parseThreadId(req.params.threadId);
+  if (threadId === null) {
+    res.status(404).json({ error: "Thread not found" });
+    return;
+  }
+
+  const parsed = RespondToDmThreadBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const userId = req.userId!;
+  const [thread] = await db
+    .select()
+    .from(dmThreadsTable)
+    .where(eq(dmThreadsTable.id, threadId));
+  if (!thread || (thread.userAId !== userId && thread.userBId !== userId)) {
+    res.status(404).json({ error: "Thread not found" });
+    return;
+  }
+
+  // Only the recipient of a still-pending request can accept/reject it —
+  // not the initiator (they can't accept/reject their own request), and
+  // not once it's already been responded to.
+  if (thread.status !== "pending") {
+    res
+      .status(409)
+      .json({ error: "This message request has already been responded to." });
+    return;
+  }
+  if (thread.initiatorId === userId) {
+    res
+      .status(403)
+      .json({ error: "You can't accept or reject your own message request." });
+    return;
+  }
+
+  const [updated] = await db
+    .update(dmThreadsTable)
+    .set({ status: parsed.data.action === "accept" ? "accepted" : "rejected" })
+    .where(eq(dmThreadsTable.id, threadId))
+    .returning();
+
+  // Let the initiator know live, if connected, so their UI updates (e.g.
+  // enabling/disabling their composer) without a reload.
+  broadcastToThread(threadId, {
+    type: "dm-request-responded",
+    threadId: String(threadId),
+    status: updated.status,
+  });
+
+  res.json(RespondToDmThreadResponse.parse({ status: updated.status }));
 });
 
 router.get("/dms/:threadId/key", async (req, res): Promise<void> => {
@@ -672,9 +737,22 @@ router.post(
     }
 
     const userId = req.userId!;
-    const member = await isThreadParticipant(threadId, userId);
-    if (!member) {
+    const [thread] = await db
+      .select()
+      .from(dmThreadsTable)
+      .where(eq(dmThreadsTable.id, threadId));
+    if (!thread || (thread.userAId !== userId && thread.userBId !== userId)) {
       res.status(404).json({ error: "Thread not found" });
+      return;
+    }
+
+    if (!canSendDm(thread, userId)) {
+      res.status(403).json({
+        error:
+          thread.status === "rejected"
+            ? "This person has declined your message request."
+            : "Waiting for the other person to accept your message request before you can reply.",
+      });
       return;
     }
 

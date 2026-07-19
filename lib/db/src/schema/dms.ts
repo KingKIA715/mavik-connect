@@ -31,6 +31,22 @@ export const dmThreadsTable = pgTable(
     // 2 participants. Null means "never opened this thread".
     userALastReadAt: timestamp("user_a_last_read_at", { withTimezone: true }),
     userBLastReadAt: timestamp("user_b_last_read_at", { withTimezone: true }),
+    // Message-request flow: userAId/userBId are stored in canonical sorted
+    // order (see comment above) so they can't tell us who *started* the
+    // conversation — initiatorId tracks that separately. Nullable because
+    // pre-existing threads (created before this feature shipped) predate
+    // the concept and are backfilled as already-"accepted" below, where
+    // initiator no longer matters.
+    initiatorId: text("initiator_id").references(() => usersTable.id),
+    // "pending": only initiatorId may send messages (possibly several)
+    // until the other side accepts or rejects.
+    // "accepted": both sides can send freely.
+    // "rejected": a *one-directional* permanent block — initiatorId can
+    // never send into this thread again, but the other side still can (see
+    // canSendDm in dmAccess.ts). Existing threads are backfilled as
+    // "accepted" since they already have message history predating this
+    // feature.
+    status: text("status").notNull().default("accepted"),
   },
   (table) => [unique().on(table.userAId, table.userBId)],
 );

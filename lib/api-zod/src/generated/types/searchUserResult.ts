@@ -11,6 +11,10 @@ export interface SearchUserResult {
   email: string;
   name: string;
   /** @nullable */
+  firstName?: string | null;
+  /** @nullable */
+  lastName?: string | null;
+  /** @nullable */
   avatarUrl?: string | null;
   /** @nullable */
   publicKey?: string | null;

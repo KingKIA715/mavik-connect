@@ -9,7 +9,17 @@
 export interface UserProfile {
   id: string;
   email: string;
+  /** Derived display name, recomputed server-side from firstName/lastName on every profile update. */
   name: string;
+  /** @nullable */
+  firstName?: string | null;
+  /** @nullable */
+  lastName?: string | null;
+  /**
+     * E.164 format (e.g. +14155551234). Format-validated only — not verified to belong to the user.
+     * @nullable
+     */
+  phoneNumber?: string | null;
   /** @nullable */
   avatarUrl?: string | null;
   /** @nullable */

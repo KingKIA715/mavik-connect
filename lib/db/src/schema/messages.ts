@@ -20,6 +20,11 @@ export const messagesTable = pgTable("messages", {
     .notNull()
     .references(() => usersTable.id),
   content: text("content").notNull(),
+  // "system" messages (e.g. "Jamie left the group.") are server-generated
+  // and NOT E2E-encrypted — see the /groups/:groupId/members/:userId
+  // handler for where these get inserted. This is a deliberate, narrow
+  // exception to "server never sees plaintext": the text is trivial
+  // membership-change metadata, not user-authored conversation content.
   type: text("type").notNull().default("text"),
   fileName: text("file_name"),
   mimeType: text("mime_type"),

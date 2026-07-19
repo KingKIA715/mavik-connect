@@ -35,7 +35,17 @@ export interface HealthStatus {
 export interface UserProfile {
   id: string;
   email: string;
+  /** Derived display name, recomputed server-side from firstName/lastName on every profile update. */
   name: string;
+  /** @nullable */
+  firstName?: string | null;
+  /** @nullable */
+  lastName?: string | null;
+  /**
+     * E.164 format (e.g. +14155551234). Format-validated only — not verified to belong to the user.
+     * @nullable
+     */
+  phoneNumber?: string | null;
   /** @nullable */
   avatarUrl?: string | null;
   /** @nullable */
@@ -50,7 +60,15 @@ export interface PublicKeyInput {
 
 export interface UpdateMyProfileInput {
   /** @minLength 1 */
-  name: string;
+  firstName: string;
+  /** @minLength 1 */
+  lastName: string;
+  /**
+     * E.164 format (e.g. +14155551234), or null to clear it. Format-validated server-side; not verified to belong to the user.
+     * @nullable
+     * @pattern ^\+[1-9]\d{6,14}$
+     */
+  phoneNumber?: string | null;
 }
 
 export interface Group {
@@ -159,6 +177,7 @@ export const MessageType = {
   text: 'text',
   file: 'file',
   voice: 'voice',
+  system: 'system',
 } as const;
 
 export interface Message {
@@ -239,6 +258,10 @@ export interface SearchUserResult {
   email: string;
   name: string;
   /** @nullable */
+  firstName?: string | null;
+  /** @nullable */
+  lastName?: string | null;
+  /** @nullable */
   avatarUrl?: string | null;
   /** @nullable */
   publicKey?: string | null;
@@ -247,6 +270,18 @@ export interface SearchUserResult {
 export interface DmThreadInput {
   email: string;
 }
+
+/**
+ * Message-request status. "pending": only the initiator can send, until the other side accepts/rejects via PUT /dms/{threadId}/respond. "accepted": both sides can send freely. "rejected": a one-directional permanent block on the initiator only — see canSendDm in the API server.
+ */
+export type DmThreadStatus = typeof DmThreadStatus[keyof typeof DmThreadStatus];
+
+
+export const DmThreadStatus = {
+  pending: 'pending',
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
 
 export interface DmThread {
   id: string;
@@ -272,6 +307,34 @@ export interface DmThread {
   otherUserLastReadAt?: string | null;
   /** Messages from the other participant created after myLastReadAt. */
   unreadCount: number;
+  /** Message-request status. "pending": only the initiator can send, until the other side accepts/rejects via PUT /dms/{threadId}/respond. "accepted": both sides can send freely. "rejected": a one-directional permanent block on the initiator only — see canSendDm in the API server. */
+  status: DmThreadStatus;
+  /** Whether the current user was the one who started this thread. */
+  isInitiatedByMe: boolean;
+}
+
+export type RespondToDmThreadInputAction = typeof RespondToDmThreadInputAction[keyof typeof RespondToDmThreadInputAction];
+
+
+export const RespondToDmThreadInputAction = {
+  accept: 'accept',
+  reject: 'reject',
+} as const;
+
+export interface RespondToDmThreadInput {
+  action: RespondToDmThreadInputAction;
+}
+
+export type RespondToDmThreadResultStatus = typeof RespondToDmThreadResultStatus[keyof typeof RespondToDmThreadResultStatus];
+
+
+export const RespondToDmThreadResultStatus = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+export interface RespondToDmThreadResult {
+  status: RespondToDmThreadResultStatus;
 }
 
 export type DmMessageType = typeof DmMessageType[keyof typeof DmMessageType];
@@ -358,6 +421,13 @@ export interface DmKeyInput {
 
 export type SearchUserByEmailParams = {
 email: string;
+};
+
+export type SearchUsersByNameParams = {
+/**
+ * @minLength 1
+ */
+name: string;
 };
 
 export type ListMessagesParams = {

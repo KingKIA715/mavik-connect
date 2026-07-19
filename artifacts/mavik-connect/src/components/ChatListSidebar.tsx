@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -10,16 +10,33 @@ import {
   useCreateDmThread,
   useSetDmKey,
   useGetMyProfile,
+  useSearchUsersByName,
+  getSearchUsersByNameQueryKey,
   getListDmThreadsQueryKey,
 } from "@workspace/api-client-react";
+import type { SearchUserResult } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Plus, Users, MessageCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { useEncryption, createAndShareGroupKey, createAndShareDmKey } from "@/hooks/use-encryption";
+import {
+  useEncryption,
+  createAndShareGroupKey,
+  createAndShareDmKey,
+} from "@/hooks/use-encryption";
 import { useToast } from "@/hooks/use-toast";
 
 type Tab = "groups" | "dms";
@@ -52,36 +69,33 @@ export function ChatListSidebar({
   const [isDmDialogOpen, setIsDmDialogOpen] = useState(false);
   const [isStartingDm, setIsStartingDm] = useState(false);
 
-  const handleCreateGroup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newGroupName.trim() || !identity) return;
+  // Name search for starting a new DM without knowing the exact email —
+  // debounced so we're not firing a request on every keystroke.
+  const [nameQuery, setNameQuery] = useState("");
+  const [debouncedNameQuery, setDebouncedNameQuery] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setDebouncedNameQuery(nameQuery.trim()),
+      300,
+    );
+    return () => clearTimeout(timer);
+  }, [nameQuery]);
+  const { data: nameResults, isFetching: isSearchingByName } =
+    useSearchUsersByName(
+      { name: debouncedNameQuery },
+      {
+        query: {
+          enabled: debouncedNameQuery.length > 0,
+          queryKey: getSearchUsersByNameQueryKey({ name: debouncedNameQuery }),
+        },
+      },
+    );
 
-    setIsCreatingGroup(true);
-    try {
-      const group = await createGroup.mutateAsync({ data: { name: newGroupName } });
-      await createAndShareGroupKey({
-        groupId: group.id,
-        myUserId: group.createdBy,
-        myPublicKey: identity.publicKey,
-        setGroupKey: (args) => setGroupKey.mutateAsync(args),
-      });
-      queryClient.invalidateQueries({ queryKey: getListGroupsQueryKey() });
-      setNewGroupName("");
-      setIsGroupDialogOpen(false);
-    } catch {
-      toast({ variant: "destructive", title: "Couldn't create group", description: "Please try again." });
-    } finally {
-      setIsCreatingGroup(false);
-    }
-  };
-
-  const handleStartConversation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!dmEmail.trim() || !identity || !profile) return;
-
+  const startConversationWithEmail = async (email: string) => {
+    if (!identity || !profile) return;
     setIsStartingDm(true);
     try {
-      const thread = await createDmThread.mutateAsync({ data: { email: dmEmail } });
+      const thread = await createDmThread.mutateAsync({ data: { email } });
 
       if (!thread.otherUserHasEncryptionKey) {
         await createAndShareDmKey({
@@ -94,16 +108,58 @@ export function ChatListSidebar({
 
       queryClient.invalidateQueries({ queryKey: getListDmThreadsQueryKey() });
       setDmEmail("");
+      setNameQuery("");
       setIsDmDialogOpen(false);
     } catch (err: any) {
       toast({
         variant: "destructive",
         title: "Couldn't start conversation",
-        description: err?.status === 404 ? "No account found for that email yet." : "Please try again.",
+        description:
+          err?.status === 404
+            ? "No account found for that email yet."
+            : "Please try again.",
       });
     } finally {
       setIsStartingDm(false);
     }
+  };
+
+  const handleSelectSearchResult = (user: SearchUserResult) =>
+    startConversationWithEmail(user.email);
+
+  const handleCreateGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newGroupName.trim() || !identity) return;
+
+    setIsCreatingGroup(true);
+    try {
+      const group = await createGroup.mutateAsync({
+        data: { name: newGroupName },
+      });
+      await createAndShareGroupKey({
+        groupId: group.id,
+        myUserId: group.createdBy,
+        myPublicKey: identity.publicKey,
+        setGroupKey: (args) => setGroupKey.mutateAsync(args),
+      });
+      queryClient.invalidateQueries({ queryKey: getListGroupsQueryKey() });
+      setNewGroupName("");
+      setIsGroupDialogOpen(false);
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Couldn't create group",
+        description: "Please try again.",
+      });
+    } finally {
+      setIsCreatingGroup(false);
+    }
+  };
+
+  const handleStartConversation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dmEmail.trim() || !identity || !profile) return;
+    await startConversationWithEmail(dmEmail);
   };
 
   return (
@@ -129,91 +185,141 @@ export function ChatListSidebar({
         {tab === "groups" ? (
           groupsLoading ? (
             <div className="p-2 space-y-2">
-              {[1, 2, 3].map(i => <div key={i} className="h-16 bg-muted/50 rounded-lg animate-pulse" />)}
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-16 bg-muted/50 rounded-lg animate-pulse"
+                />
+              ))}
             </div>
           ) : groups?.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">
               No groups yet. Tap the + button to create one.
             </div>
           ) : (
-            groups?.map(group => {
+            groups?.map((group) => {
               const isUnread = group.unreadCount > 0;
               return (
-              <Link key={group.id} href={`/app/groups/${group.id}`}>
-                <div className={`flex items-center gap-3 px-3 py-3 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors ${activeGroupId === group.id ? "bg-secondary" : "hover:bg-muted/60"}`}>
-                  <Avatar className="w-11 h-11 border shadow-sm flex-shrink-0">
-                    {group.avatarUrl && <AvatarImage src={group.avatarUrl} />}
-                    <AvatarFallback className="bg-primary/10 text-primary">
-                      <Users className="w-5 h-5" />
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={`truncate text-sm ${isUnread ? "font-semibold" : "font-medium"}`}>{group.name}</span>
-                      {group.lastMessageAt && (
-                        <span className={`text-[11px] flex-shrink-0 ${isUnread ? "text-primary font-medium" : "text-muted-foreground"}`}>
-                          {formatDistanceToNow(new Date(group.lastMessageAt), { addSuffix: true })}
+                <Link key={group.id} href={`/app/groups/${group.id}`}>
+                  <div
+                    className={`flex items-center gap-3 px-3 py-3 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors ${activeGroupId === group.id ? "bg-secondary" : "hover:bg-muted/60"}`}
+                  >
+                    <Avatar className="w-11 h-11 border shadow-sm flex-shrink-0">
+                      {group.avatarUrl && <AvatarImage src={group.avatarUrl} />}
+                      <AvatarFallback className="bg-primary/10 text-primary">
+                        <Users className="w-5 h-5" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`truncate text-sm ${isUnread ? "font-semibold" : "font-medium"}`}
+                        >
+                          {group.name}
                         </span>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className={`text-xs truncate ${isUnread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                        {group.lastMessagePreview ?? "No messages yet."}
-                      </p>
-                      {isUnread && (
-                        <span className="flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
-                          {group.unreadCount > 99 ? "99+" : group.unreadCount}
-                        </span>
-                      )}
+                        {group.lastMessageAt && (
+                          <span
+                            className={`text-[11px] flex-shrink-0 ${isUnread ? "text-primary font-medium" : "text-muted-foreground"}`}
+                          >
+                            {formatDistanceToNow(
+                              new Date(group.lastMessageAt),
+                              { addSuffix: true },
+                            )}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <p
+                          className={`text-xs truncate ${isUnread ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                        >
+                          {group.lastMessagePreview ?? "No messages yet."}
+                        </p>
+                        {isUnread && (
+                          <span className="flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
+                            {group.unreadCount > 99 ? "99+" : group.unreadCount}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Link>
+                </Link>
               );
             })
           )
         ) : threadsLoading ? (
           <div className="p-2 space-y-2">
-            {[1, 2, 3].map(i => <div key={i} className="h-16 bg-muted/50 rounded-lg animate-pulse" />)}
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-16 bg-muted/50 rounded-lg animate-pulse"
+              />
+            ))}
           </div>
         ) : threads?.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
             No conversations yet. Tap the + button to message someone.
           </div>
         ) : (
-          threads?.map(thread => {
+          threads?.map((thread) => {
             const isUnread = thread.unreadCount > 0;
+            const isIncomingRequest =
+              thread.status === "pending" && !thread.isInitiatedByMe;
+            const isOutgoingRequest =
+              thread.status === "pending" && thread.isInitiatedByMe;
             return (
-            <Link key={thread.id} href={`/app/dms/${thread.id}`}>
-              <div className={`flex items-center gap-3 px-3 py-3 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors ${activeThreadId === thread.id ? "bg-secondary" : "hover:bg-muted/60"}`}>
-                <Avatar className="w-11 h-11 border shadow-sm flex-shrink-0">
-                  {thread.otherUserAvatarUrl && <AvatarImage src={thread.otherUserAvatarUrl} />}
-                  <AvatarFallback className="bg-secondary text-secondary-foreground">
-                    {thread.otherUserName.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={`truncate text-sm ${isUnread ? "font-semibold" : "font-medium"}`}>{thread.otherUserName}</span>
-                    {thread.lastMessageAt && (
-                      <span className={`text-[11px] flex-shrink-0 ${isUnread ? "text-primary font-medium" : "text-muted-foreground"}`}>
-                        {formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: true })}
-                      </span>
+              <Link key={thread.id} href={`/app/dms/${thread.id}`}>
+                <div
+                  className={`flex items-center gap-3 px-3 py-3 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors ${activeThreadId === thread.id ? "bg-secondary" : "hover:bg-muted/60"}`}
+                >
+                  <Avatar className="w-11 h-11 border shadow-sm flex-shrink-0">
+                    {thread.otherUserAvatarUrl && (
+                      <AvatarImage src={thread.otherUserAvatarUrl} />
                     )}
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className={`text-xs truncate ${isUnread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                      {thread.lastMessagePreview ?? "No messages yet."}
-                    </p>
-                    {isUnread && (
-                      <span className="flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
-                        {thread.unreadCount > 99 ? "99+" : thread.unreadCount}
+                    <AvatarFallback className="bg-secondary text-secondary-foreground">
+                      {thread.otherUserName.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`truncate text-sm flex items-center gap-1.5 ${isUnread ? "font-semibold" : "font-medium"}`}
+                      >
+                        {thread.otherUserName}
+                        {isIncomingRequest && (
+                          <span className="flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 rounded-full px-1.5 py-0.5">
+                            Request
+                          </span>
+                        )}
                       </span>
-                    )}
+                      {thread.lastMessageAt && (
+                        <span
+                          className={`text-[11px] flex-shrink-0 ${isUnread ? "text-primary font-medium" : "text-muted-foreground"}`}
+                        >
+                          {formatDistanceToNow(new Date(thread.lastMessageAt), {
+                            addSuffix: true,
+                          })}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p
+                        className={`text-xs truncate ${isUnread ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                      >
+                        {isIncomingRequest
+                          ? "Wants to send you a message"
+                          : isOutgoingRequest
+                            ? "Message request sent · waiting for a reply"
+                            : (thread.lastMessagePreview ?? "No messages yet.")}
+                      </p>
+                      {isUnread && (
+                        <span className="flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
+                          {thread.unreadCount > 99 ? "99+" : thread.unreadCount}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Link>
+              </Link>
             );
           })
         )}
@@ -243,11 +349,15 @@ export function ChatListSidebar({
       <Dialog open={isGroupDialogOpen} onOpenChange={setIsGroupDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="font-serif text-xl">Create a New Group</DialogTitle>
+            <DialogTitle className="font-serif text-xl">
+              Create a New Group
+            </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleCreateGroup} className="space-y-4 pt-4">
             <div className="space-y-2">
-              <label htmlFor="name" className="text-sm font-medium">Group Name</label>
+              <label htmlFor="name" className="text-sm font-medium">
+                Group Name
+              </label>
               <Input
                 id="name"
                 value={newGroupName}
@@ -256,8 +366,16 @@ export function ChatListSidebar({
                 autoFocus
               />
             </div>
-            <Button type="submit" disabled={isCreatingGroup || !identity} className="w-full">
-              {isCreatingGroup ? "Creating..." : !identity ? "Setting up encryption..." : "Create Group"}
+            <Button
+              type="submit"
+              disabled={isCreatingGroup || !identity}
+              className="w-full"
+            >
+              {isCreatingGroup
+                ? "Creating..."
+                : !identity
+                  ? "Setting up encryption..."
+                  : "Create Group"}
             </Button>
           </form>
         </DialogContent>
@@ -266,23 +384,87 @@ export function ChatListSidebar({
       <Dialog open={isDmDialogOpen} onOpenChange={setIsDmDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="font-serif text-xl">Start a Conversation</DialogTitle>
+            <DialogTitle className="font-serif text-xl">
+              Start a Conversation
+            </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleStartConversation} className="space-y-4 pt-4">
+
+          <div className="space-y-2 pt-2">
+            <label htmlFor="dm-name-search" className="text-sm font-medium">
+              Find by name
+            </label>
+            <Input
+              id="dm-name-search"
+              value={nameQuery}
+              onChange={(e) => setNameQuery(e.target.value)}
+              placeholder="Search by name..."
+              autoFocus
+            />
+            {debouncedNameQuery && (
+              <div className="max-h-48 overflow-y-auto rounded-md border divide-y">
+                {isSearchingByName ? (
+                  <p className="text-sm text-muted-foreground px-3 py-2">
+                    Searching...
+                  </p>
+                ) : nameResults && nameResults.length > 0 ? (
+                  nameResults.map((user) => (
+                    <button
+                      key={user.id}
+                      type="button"
+                      disabled={isStartingDm}
+                      onClick={() => handleSelectSearchResult(user)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 disabled:opacity-50"
+                    >
+                      <Avatar className="w-6 h-6">
+                        {user.avatarUrl && <AvatarImage src={user.avatarUrl} />}
+                        <AvatarFallback className="text-xs">
+                          {user.name.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm">{user.name}</span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground px-3 py-2">
+                    No one found by that name.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
+            <div className="flex-1 border-t" />
+            or
+            <div className="flex-1 border-t" />
+          </div>
+
+          <form onSubmit={handleStartConversation} className="space-y-4 pt-2">
             <div className="space-y-2">
-              <label htmlFor="dm-email" className="text-sm font-medium">Their Email</label>
+              <label htmlFor="dm-email" className="text-sm font-medium">
+                Their Email
+              </label>
               <Input
                 id="dm-email"
                 type="email"
                 value={dmEmail}
                 onChange={(e) => setDmEmail(e.target.value)}
                 placeholder="mom@example.com"
-                autoFocus
               />
-              <p className="text-xs text-muted-foreground">They must have created an account first.</p>
+              <p className="text-xs text-muted-foreground">
+                They must have created an account first.
+              </p>
             </div>
-            <Button type="submit" disabled={isStartingDm || !identity} className="w-full">
-              {isStartingDm ? "Starting..." : !identity ? "Setting up encryption..." : "Start Conversation"}
+            <Button
+              type="submit"
+              disabled={isStartingDm || !identity}
+              className="w-full"
+            >
+              {isStartingDm
+                ? "Starting..."
+                : !identity
+                  ? "Setting up encryption..."
+                  : "Start Conversation"}
             </Button>
           </form>
         </DialogContent>

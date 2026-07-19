@@ -51,13 +51,12 @@ paths:
     patch:
       operationId: updateMyProfile
       tags: [users]
-      summary: Update the current user's display name
+      summary: Update the current user's profile fields
       description: >
-        Keeps this app's local display name (shown on messages, DM lists,
-        member lists, etc.) in sync after the user edits their first/last
-        name through Clerk. Call this right after a successful Clerk
-        `user.update({ firstName, lastName })` on the frontend — this
-        endpoint does not talk to Clerk itself.
+        Updates firstName, lastName, and phoneNumber as plain profile
+        fields directly on this app's own users table — no Clerk call, no
+        SMS/OTP verification. The server recomputes the derived `name`
+        field from firstName/lastName and returns it in the response.
       requestBody:
         required: true
         content:
@@ -140,6 +139,35 @@ paths:
                 $ref: "#/components/schemas/SearchUserResult"
         "404":
           description: No user with that email
+
+  /users/search/by-name:
+    get:
+      operationId: searchUsersByName
+      tags: [users]
+      summary: Search registered users by name (case-insensitive, partial match)
+      description: >
+        Open name search over all registered users — not limited to
+        existing contacts or shared groups. Used to find someone to start a
+        new DM with (see Item 2's message-request flow for what happens
+        after a thread is created with someone new). Matches against
+        firstName, lastName, or the combined display name. Excludes the
+        caller. Returns an empty array (not 404) if nothing matches.
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Matching users (may be empty)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SearchUserResult"
 
   /groups:
     get:
@@ -394,7 +422,9 @@ paths:
       summary: Remove a member from a group, or leave it yourself
       description: >
         Any member can remove themselves (leave the group). Removing
-        someone else requires being the group's creator.
+        someone else requires being the group's creator. Either way, a
+        "system" message announcing the departure is inserted into the
+        group's chat history and broadcast live to remaining members.
       parameters:
         - name: groupId
           in: path
@@ -766,6 +796,44 @@ paths:
         "404":
           description: Not found
 
+  /dms/{threadId}/respond:
+    put:
+      operationId: respondToDmThread
+      tags: [dms]
+      summary: Accept or reject a pending DM message request
+      description: >
+        Only the non-initiator (recipient) of a "pending" thread can call
+        this, and only while it's still pending. Rejecting is a
+        one-directional permanent block: the initiator can never send into
+        this thread again, but the recipient still can (e.g. if they
+        change their mind and reach out themselves later). Broadcasts a WS
+        "dm-request-responded" event so the initiator's UI updates live.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RespondToDmThreadInput"
+      responses:
+        "200":
+          description: Updated status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RespondToDmThreadResult"
+        "403":
+          description: Not the recipient of this request
+        "404":
+          description: Not found
+        "409":
+          description: Already responded to
+
   /dms/{threadId}/messages:
     get:
       operationId: listDmMessages
@@ -1020,6 +1088,18 @@ components:
           type: string
         name:
           type: string
+          description: >
+            Derived display name, recomputed server-side from
+            firstName/lastName on every profile update.
+        firstName:
+          type: ["string", "null"]
+        lastName:
+          type: ["string", "null"]
+        phoneNumber:
+          type: ["string", "null"]
+          description: >
+            E.164 format (e.g. +14155551234). Format-validated only — not
+            verified to belong to the user.
         avatarUrl:
           type: ["string", "null"]
         publicKey:
@@ -1037,11 +1117,21 @@ components:
 
     UpdateMyProfileInput:
       type: object
-      required: [name]
+      required: [firstName, lastName]
       properties:
-        name:
+        firstName:
           type: string
           minLength: 1
+        lastName:
+          type: string
+          minLength: 1
+        phoneNumber:
+          type: ["string", "null"]
+          description: >
+            E.164 format (e.g. +14155551234), or null to clear it.
+            Format-validated server-side; not verified to belong to the
+            user.
+          pattern: "^\\+[1-9]\\d{6,14}$"
 
     Group:
       type: object
@@ -1216,7 +1306,7 @@ components:
           type: string
         type:
           type: string
-          enum: [text, file, voice]
+          enum: [text, file, voice, system]
           default: text
         fileName:
           type: ["string", "null"]
@@ -1310,6 +1400,10 @@ components:
           type: string
         name:
           type: string
+        firstName:
+          type: ["string", "null"]
+        lastName:
+          type: ["string", "null"]
         avatarUrl:
           type: ["string", "null"]
         publicKey:
@@ -1333,6 +1427,8 @@ components:
           otherUserHasEncryptionKey,
           createdAt,
           unreadCount,
+          status,
+          isInitiatedByMe,
         ]
       properties:
         id:
@@ -1365,6 +1461,34 @@ components:
         unreadCount:
           type: integer
           description: Messages from the other participant created after myLastReadAt.
+        status:
+          type: string
+          enum: [pending, accepted, rejected]
+          description: >
+            Message-request status. "pending": only the initiator can send,
+            until the other side accepts/rejects via PUT
+            /dms/{threadId}/respond. "accepted": both sides can send
+            freely. "rejected": a one-directional permanent block on the
+            initiator only — see canSendDm in the API server.
+        isInitiatedByMe:
+          type: boolean
+          description: Whether the current user was the one who started this thread.
+
+    RespondToDmThreadInput:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [accept, reject]
+
+    RespondToDmThreadResult:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [accepted, rejected]
 
     DmMessage:
       type: object

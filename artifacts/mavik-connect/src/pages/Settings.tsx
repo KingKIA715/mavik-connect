@@ -1,8 +1,19 @@
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useGetMyProfile, useUpdateMyProfile, useGetKeyHistory, getGetMyProfileQueryKey } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  useGetMyProfile,
+  useUpdateMyProfile,
+  useGetKeyHistory,
+  getGetMyProfileQueryKey,
+} from "@workspace/api-client-react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +21,13 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { format, formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { Phone, ShieldCheck, Key, Smartphone, Monitor } from "lucide-react";
+import { Phone, Key, Smartphone, Monitor } from "lucide-react";
+
+// Format-only E.164 check, mirrored from the server-side validation
+// (see UpdateMyProfileBody in the API spec) so the form can show an inline
+// error before round-tripping to the API. Not a verification that the
+// number actually belongs to the user — just a shape check.
+const E164_PATTERN = /^\+[1-9]\d{6,14}$/;
 
 // Rough, best-effort browser/OS/device-type read from a User-Agent string —
 // good enough for "which device was this", not meant to be precise or used
@@ -63,96 +80,51 @@ export default function Settings() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // --- Name ---
+  // --- Name + phone: plain profile fields on this app's own users table.
+  // No Clerk routing, no SMS/OTP verification — see PATCH /users/me.
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [isSavingName, setIsSavingName] = useState(false);
+  const [phoneInput, setPhoneInput] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
-    setFirstName(user.firstName ?? "");
-    setLastName(user.lastName ?? "");
-  }, [user]);
+    if (!profile) return;
+    setFirstName(profile.firstName ?? "");
+    setLastName(profile.lastName ?? "");
+    setPhoneInput(profile.phoneNumber ?? "");
+  }, [profile]);
 
-  const handleSaveName = async (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!firstName.trim() || !lastName.trim()) return;
 
-    setIsSavingName(true);
-    try {
-      await user.update({ firstName, lastName });
-
-      const name = [firstName, lastName].filter(Boolean).join(" ").trim();
-      if (name) {
-        await updateProfile.mutateAsync({ data: { name } });
-        queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
-      }
-
-      toast({ title: "Name updated" });
-    } catch (err: any) {
-      toast({
-        variant: "destructive",
-        title: "Couldn't update name",
-        description: err?.errors?.[0]?.message ?? "Please try again.",
-      });
-    } finally {
-      setIsSavingName(false);
+    const trimmedPhone = phoneInput.trim();
+    if (trimmedPhone && !E164_PATTERN.test(trimmedPhone)) {
+      setPhoneError("Include a country code, e.g. +14155551234.");
+      return;
     }
-  };
+    setPhoneError(null);
 
-  // --- Phone number ---
-  const [phoneInput, setPhoneInput] = useState("");
-  const [phoneCode, setPhoneCode] = useState("");
-  const [pendingPhoneId, setPendingPhoneId] = useState<string | null>(null);
-  const [isPhoneBusy, setIsPhoneBusy] = useState(false);
-
-  const primaryPhone = user?.primaryPhoneNumber?.phoneNumber ?? null;
-
-  const handleAddPhone = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !phoneInput.trim()) return;
-
-    setIsPhoneBusy(true);
+    setIsSavingProfile(true);
     try {
-      const created = await user.createPhoneNumber({ phoneNumber: phoneInput.trim() });
-      await created.prepareVerification();
-      setPendingPhoneId(created.id);
-      toast({ title: "Code sent", description: "Check your texts for a verification code." });
+      await updateProfile.mutateAsync({
+        data: {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          phoneNumber: trimmedPhone || null,
+        },
+      });
+      queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+      toast({ title: "Profile updated" });
     } catch (err: any) {
       toast({
         variant: "destructive",
-        title: "Couldn't add phone number",
-        description: err?.errors?.[0]?.message ?? "Please check the number and try again.",
+        title: "Couldn't update profile",
+        description: err?.message ?? "Please try again.",
       });
     } finally {
-      setIsPhoneBusy(false);
-    }
-  };
-
-  const handleVerifyPhone = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !pendingPhoneId || !phoneCode.trim()) return;
-
-    setIsPhoneBusy(true);
-    try {
-      const phoneNumber = user.phoneNumbers.find((p) => p.id === pendingPhoneId);
-      if (!phoneNumber) throw new Error("Phone number not found");
-
-      await phoneNumber.attemptVerification({ code: phoneCode.trim() });
-      await user.update({ primaryPhoneNumberId: pendingPhoneId });
-
-      setPendingPhoneId(null);
-      setPhoneInput("");
-      setPhoneCode("");
-      toast({ title: "Phone number added" });
-    } catch (err: any) {
-      toast({
-        variant: "destructive",
-        title: "Couldn't verify code",
-        description: err?.errors?.[0]?.message ?? "Please check the code and try again.",
-      });
-    } finally {
-      setIsPhoneBusy(false);
+      setIsSavingProfile(false);
     }
   };
 
@@ -182,7 +154,9 @@ export default function Settings() {
       toast({
         variant: "destructive",
         title: "Couldn't update password",
-        description: err?.errors?.[0]?.message ?? "Check your current password and try again.",
+        description:
+          err?.errors?.[0]?.message ??
+          "Check your current password and try again.",
       });
     } finally {
       setIsSavingPassword(false);
@@ -202,7 +176,9 @@ export default function Settings() {
     <div className="p-6 md:p-10 space-y-6 max-w-2xl mx-auto w-full">
       <div>
         <h1 className="text-3xl font-serif font-bold">Profile Settings</h1>
-        <p className="text-muted-foreground mt-1">Manage your personal information.</p>
+        <p className="text-muted-foreground mt-1">
+          Manage your personal information.
+        </p>
       </div>
 
       {/* Overview */}
@@ -210,7 +186,9 @@ export default function Settings() {
         <CardContent className="pt-6">
           <div className="flex items-center gap-6">
             <Avatar className="w-20 h-20 border-4 border-background shadow-sm">
-              {profile.avatarUrl ? <AvatarImage src={profile.avatarUrl} alt={profile.name} /> : null}
+              {profile.avatarUrl ? (
+                <AvatarImage src={profile.avatarUrl} alt={profile.name} />
+              ) : null}
               <AvatarFallback className="text-2xl bg-primary/10 text-primary">
                 {profile.name?.charAt(0)?.toUpperCase()}
               </AvatarFallback>
@@ -219,85 +197,76 @@ export default function Settings() {
               <h2 className="text-xl font-bold">{profile.name}</h2>
               <p className="text-muted-foreground">{profile.email}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Member since {format(new Date(profile.createdAt), "MMMM d, yyyy")}
+                Member since{" "}
+                {format(new Date(profile.createdAt), "MMMM d, yyyy")}
               </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Name */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-serif text-lg">Name</CardTitle>
-          <CardDescription>How your name appears to family members.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSaveName} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="firstName">First name</Label>
-                <Input id="firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lastName">Last name</Label>
-                <Input id="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-              </div>
-            </div>
-            <Button type="submit" disabled={isSavingName}>
-              {isSavingName ? "Saving..." : "Save Name"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Phone number */}
+      {/* Profile — plain fields on this app's own users table. No Clerk
+          routing, no SMS/OTP verification for the phone number. */}
       <Card>
         <CardHeader>
           <CardTitle className="font-serif text-lg flex items-center gap-2">
-            <Phone className="w-4 h-4" /> Phone Number
+            <Phone className="w-4 h-4" /> Profile
           </CardTitle>
-          <CardDescription>Optional — used for account security.</CardDescription>
+          <CardDescription>
+            Your name (shown to family members) and an optional phone number.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          {primaryPhone && !pendingPhoneId ? (
-            <div className="flex items-center gap-2 text-sm">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              {primaryPhone}
-            </div>
-          ) : pendingPhoneId ? (
-            <form onSubmit={handleVerifyPhone} className="space-y-4">
+          <form onSubmit={handleSaveProfile} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="phoneCode">Enter the code we texted you</Label>
-                <Input id="phoneCode" value={phoneCode} onChange={(e) => setPhoneCode(e.target.value)} placeholder="123456" autoFocus />
-              </div>
-              <div className="flex gap-2">
-                <Button type="submit" disabled={isPhoneBusy || !phoneCode.trim()}>
-                  {isPhoneBusy ? "Verifying..." : "Verify"}
-                </Button>
-                <Button type="button" variant="ghost" onClick={() => { setPendingPhoneId(null); setPhoneCode(""); }}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          ) : (
-            <form onSubmit={handleAddPhone} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone number</Label>
+                <Label htmlFor="firstName">First name</Label>
                 <Input
-                  id="phone"
-                  type="tel"
-                  value={phoneInput}
-                  onChange={(e) => setPhoneInput(e.target.value)}
-                  placeholder="+1 555 123 4567"
+                  id="firstName"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
                 />
-                <p className="text-xs text-muted-foreground">Include your country code, e.g. +1 for the US.</p>
               </div>
-              <Button type="submit" disabled={isPhoneBusy || !phoneInput.trim()}>
-                {isPhoneBusy ? "Sending code..." : "Add Phone Number"}
-              </Button>
-            </form>
-          )}
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last name</Label>
+                <Input
+                  id="lastName"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone number</Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={phoneInput}
+                onChange={(e) => {
+                  setPhoneInput(e.target.value);
+                  setPhoneError(null);
+                }}
+                placeholder="+14155551234"
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional. Include your country code, e.g. +1 for the US. Not
+                verified — just stored on your profile.
+              </p>
+              {phoneError && (
+                <p className="text-xs text-destructive">{phoneError}</p>
+              )}
+            </div>
+            <Button
+              type="submit"
+              disabled={
+                isSavingProfile || !firstName.trim() || !lastName.trim()
+              }
+            >
+              {isSavingProfile ? "Saving..." : "Save Profile"}
+            </Button>
+          </form>
         </CardContent>
       </Card>
 
@@ -344,7 +313,12 @@ export default function Settings() {
             </div>
             <Button
               type="submit"
-              disabled={isSavingPassword || !currentPassword || !newPassword || !confirmPassword}
+              disabled={
+                isSavingPassword ||
+                !currentPassword ||
+                !newPassword ||
+                !confirmPassword
+              }
             >
               {isSavingPassword ? "Updating..." : "Change Password"}
             </Button>
@@ -359,15 +333,19 @@ export default function Settings() {
             <Key className="w-4 h-4" /> Encryption Key Activity
           </CardTitle>
           <CardDescription>
-            A timeline of when your message-encryption key was set up or changed, and roughly where from.
-            This app keeps one active key per account rather than tracking individual devices, so this is a
-            history for your own reference — not a list you can revoke devices from. If you don't recognize
-            an entry, the safest step is changing your password above.
+            A timeline of when your message-encryption key was set up or
+            changed, and roughly where from. This app keeps one active key per
+            account rather than tracking individual devices, so this is a
+            history for your own reference — not a list you can revoke devices
+            from. If you don't recognize an entry, the safest step is changing
+            your password above.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {!keyHistory || keyHistory.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No key activity recorded yet.</p>
+            <p className="text-sm text-muted-foreground">
+              No key activity recorded yet.
+            </p>
           ) : (
             <ul className="space-y-1">
               {keyHistory.map((entry, i) => {
@@ -382,7 +360,9 @@ export default function Settings() {
                     <DeviceIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-foreground truncate">{label}</span>
+                        <span className="text-foreground truncate">
+                          {label}
+                        </span>
                         {isMostRecent && (
                           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex-shrink-0">
                             Most recent
@@ -390,9 +370,14 @@ export default function Settings() {
                         )}
                       </div>
                       <span className="text-muted-foreground text-xs">
-                        {format(new Date(entry.occurredAt), "MMM d, yyyy 'at' h:mm a")}
+                        {format(
+                          new Date(entry.occurredAt),
+                          "MMM d, yyyy 'at' h:mm a",
+                        )}
                         {" · "}
-                        {formatDistanceToNow(new Date(entry.occurredAt), { addSuffix: true })}
+                        {formatDistanceToNow(new Date(entry.occurredAt), {
+                          addSuffix: true,
+                        })}
                       </span>
                     </div>
                   </li>

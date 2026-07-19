@@ -24,6 +24,7 @@ import {
   SetGroupAvatarResponse,
   ToggleMessageReactionBody,
   ToggleMessageReactionResponse,
+  SendMessageResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { keyRequestRateLimit } from "../middlewares/rateLimit";
@@ -575,6 +576,16 @@ router.delete(
       }
     }
 
+    // Look up the departing member's name before removing their membership
+    // row (the user row itself isn't touched, but fetching it first keeps
+    // this independent of that ordering).
+    const [targetUser] = await db
+      .select({ name: usersTable.name })
+      .from(usersTable)
+      .where(eq(usersTable.id, targetUserId));
+    const targetName = targetUser?.name ?? "A member";
+    const wasSelfInitiated = targetUserId === requesterId;
+
     await db
       .delete(groupMembersTable)
       .where(
@@ -584,10 +595,57 @@ router.delete(
         ),
       );
 
+    // Announce the departure in the group's own chat history as a "system"
+    // message — same wording rule for both self-leave and creator-removal,
+    // since the spec calls for a record "if anyone leaves". This is
+    // server-generated plain text (not E2E-encrypted) — see the schema
+    // comment on messagesTable.type for why that's an acceptable exception
+    // here. senderId is the departing member themselves (still a valid user
+    // row even though their membership is now gone), which both satisfies
+    // the NOT NULL/FK constraint and reads naturally as "who this message
+    // is about".
+    const systemContent = wasSelfInitiated
+      ? `${targetName} left the group.`
+      : `${targetName} was removed from the group.`;
+
+    const [systemMessage] = await db
+      .insert(messagesTable)
+      .values({
+        groupId,
+        senderId: targetUserId,
+        content: systemContent,
+        type: "system",
+      })
+      .returning();
+
+    const systemPayload = SendMessageResponse.parse({
+      id: String(systemMessage.id),
+      groupId: String(systemMessage.groupId),
+      senderId: systemMessage.senderId,
+      senderName: targetName,
+      senderAvatarUrl: null,
+      content: systemMessage.content,
+      type: systemMessage.type,
+      fileName: null,
+      mimeType: null,
+      fileSize: null,
+      durationSeconds: null,
+      replyToId: null,
+      replyTo: null,
+      mentionedUserIds: systemMessage.mentionedUserIds,
+      createdAt: toIso(systemMessage.createdAt),
+      editedAt: null,
+      deletedAt: null,
+      reactions: [],
+    });
+
     // Let anyone still connected know live: other members should drop this
     // person from their member list, and the removed person themselves (if
     // it wasn't a self-initiated leave) should be kicked out of the chat.
     broadcastToGroup(groupId, { type: "member-removed", userId: targetUserId });
+    // Broadcast the system message the same way a normal new message is
+    // broadcast, so it appears live in the chat for everyone still there.
+    broadcastToGroup(groupId, { type: "message", message: systemPayload });
 
     res.sendStatus(204);
   },

@@ -46,8 +46,11 @@ import type {
   MessageReaction,
   PublicKeyInput,
   ReadReceipt,
+  RespondToDmThreadInput,
+  RespondToDmThreadResult,
   SearchUserByEmailParams,
   SearchUserResult,
+  SearchUsersByNameParams,
   SetGroupAvatarInput,
   ToggleReactionInput,
   UpdateMyProfileInput,
@@ -246,8 +249,8 @@ export const getUpdateMyProfileUrl = () => {
 }
 
 /**
- * Keeps this app's local display name (shown on messages, DM lists, member lists, etc.) in sync after the user edits their first/last name through Clerk. Call this right after a successful Clerk `user.update({ firstName, lastName })` on the frontend — this endpoint does not talk to Clerk itself.
- * @summary Update the current user's display name
+ * Updates firstName, lastName, and phoneNumber as plain profile fields directly on this app's own users table — no Clerk call, no SMS/OTP verification. The server recomputes the derived `name` field from firstName/lastName and returns it in the response.
+ * @summary Update the current user's profile fields
  */
 export const updateMyProfile = async (updateMyProfileInput: UpdateMyProfileInput, options?: RequestInit): Promise<UserProfile> => {
 
@@ -296,7 +299,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdateMyProfileMutationError = ErrorType<unknown>
 
     /**
- * @summary Update the current user's display name
+ * @summary Update the current user's profile fields
  */
 export const useUpdateMyProfile = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMyProfile>>, TError,{data: BodyType<UpdateMyProfileInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -532,6 +535,91 @@ export function useSearchUserByEmail<TData = Awaited<ReturnType<typeof searchUse
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getSearchUserByEmailQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSearchUsersByNameUrl = (params: SearchUsersByNameParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/users/search/by-name?${stringifiedParams}` : `/api/users/search/by-name`
+}
+
+/**
+ * Open name search over all registered users — not limited to existing contacts or shared groups. Used to find someone to start a new DM with (see Item 2's message-request flow for what happens after a thread is created with someone new). Matches against firstName, lastName, or the combined display name. Excludes the caller. Returns an empty array (not 404) if nothing matches.
+ * @summary Search registered users by name (case-insensitive, partial match)
+ */
+export const searchUsersByName = async (params: SearchUsersByNameParams, options?: RequestInit): Promise<SearchUserResult[]> => {
+
+  return customFetch<SearchUserResult[]>(getSearchUsersByNameUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchUsersByNameQueryKey = (params?: SearchUsersByNameParams,) => {
+    return [
+    `/api/users/search/by-name`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchUsersByNameQueryOptions = <TData = Awaited<ReturnType<typeof searchUsersByName>>, TError = ErrorType<unknown>>(params: SearchUsersByNameParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchUsersByName>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchUsersByNameQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchUsersByName>>> = ({ signal }) => searchUsersByName(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchUsersByName>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchUsersByNameQueryResult = NonNullable<Awaited<ReturnType<typeof searchUsersByName>>>
+export type SearchUsersByNameQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Search registered users by name (case-insensitive, partial match)
+ */
+
+export function useSearchUsersByName<TData = Awaited<ReturnType<typeof searchUsersByName>>, TError = ErrorType<unknown>>(
+ params: SearchUsersByNameParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchUsersByName>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchUsersByNameQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -1291,7 +1379,7 @@ export const getRemoveGroupMemberUrl = (groupId: string,
 }
 
 /**
- * Any member can remove themselves (leave the group). Removing someone else requires being the group's creator.
+ * Any member can remove themselves (leave the group). Removing someone else requires being the group's creator. Either way, a "system" message announcing the departure is inserted into the group's chat history and broadcast live to remaining members.
  * @summary Remove a member from a group, or leave it yourself
  */
 export const removeGroupMember = async (groupId: string,
@@ -2331,6 +2419,79 @@ export const useMarkDmThreadRead = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getMarkDmThreadReadMutationOptions(options));
+    }
+
+export const getRespondToDmThreadUrl = (threadId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/respond`
+}
+
+/**
+ * Only the non-initiator (recipient) of a "pending" thread can call this, and only while it's still pending. Rejecting is a one-directional permanent block: the initiator can never send into this thread again, but the recipient still can (e.g. if they change their mind and reach out themselves later). Broadcasts a WS "dm-request-responded" event so the initiator's UI updates live.
+ * @summary Accept or reject a pending DM message request
+ */
+export const respondToDmThread = async (threadId: string,
+    respondToDmThreadInput: RespondToDmThreadInput, options?: RequestInit): Promise<RespondToDmThreadResult> => {
+
+  return customFetch<RespondToDmThreadResult>(getRespondToDmThreadUrl(threadId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(respondToDmThreadInput)
+  }
+);}
+
+
+
+
+
+export const getRespondToDmThreadMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof respondToDmThread>>, TError,{threadId: string;data: BodyType<RespondToDmThreadInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof respondToDmThread>>, TError,{threadId: string;data: BodyType<RespondToDmThreadInput>}, TContext> => {
+
+const mutationKey = ['respondToDmThread'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof respondToDmThread>>, {threadId: string;data: BodyType<RespondToDmThreadInput>}> = (props) => {
+          const {threadId,data} = props ?? {};
+
+          return  respondToDmThread(threadId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RespondToDmThreadMutationResult = NonNullable<Awaited<ReturnType<typeof respondToDmThread>>>
+    export type RespondToDmThreadMutationBody = BodyType<RespondToDmThreadInput>
+    export type RespondToDmThreadMutationError = ErrorType<void>
+
+    /**
+ * @summary Accept or reject a pending DM message request
+ */
+export const useRespondToDmThread = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof respondToDmThread>>, TError,{threadId: string;data: BodyType<RespondToDmThreadInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof respondToDmThread>>,
+        TError,
+        {threadId: string;data: BodyType<RespondToDmThreadInput>},
+        TContext
+      > => {
+      return useMutation(getRespondToDmThreadMutationOptions(options));
     }
 
 export const getListDmMessagesUrl = (threadId: string,
