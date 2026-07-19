@@ -51,7 +51,19 @@ export function ChatListSidebar({
   const [tab, setTab] = useState<Tab>(activeThreadId ? "dms" : "groups");
 
   const { data: groups, isLoading: groupsLoading } = useListGroups();
-  const { data: threads, isLoading: threadsLoading } = useListDmThreads();
+  const { data: threads, isLoading: threadsLoading } = useListDmThreads({
+    query: {
+      // There's no server push telling this browser "someone just started a
+      // new conversation with you" — only actions the current user takes
+      // themselves invalidate this list. Poll at a modest interval so a
+      // brand-new incoming thread (e.g. from someone who deleted an old
+      // rejected thread and started fresh) shows up within a bounded time
+      // instead of requiring a manual reload.
+      refetchInterval: 15_000,
+      refetchOnWindowFocus: true,
+      queryKey: getListDmThreadsQueryKey(),
+    },
+  });
   const { data: profile } = useGetMyProfile();
   const createGroup = useCreateGroup();
   const setGroupKey = useSetGroupKey();

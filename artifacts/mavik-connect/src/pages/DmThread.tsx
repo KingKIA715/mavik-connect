@@ -94,7 +94,15 @@ export default function DmThread() {
   const [, navigate] = useLocation();
   const { data: profile } = useGetMyProfile();
   const { data: thread, isLoading: threadLoading } = useGetDmThread(threadId!, {
-    query: { enabled: !!threadId, queryKey: getGetDmThreadQueryKey(threadId!) },
+    query: {
+      enabled: !!threadId,
+      queryKey: getGetDmThreadQueryKey(threadId!),
+      // Safety net on top of the WS push: if the connection silently drops
+      // (backgrounded tab, brief reconnect gap) this still catches status
+      // changes and key availability within a bounded time.
+      refetchInterval: 15_000,
+      refetchOnWindowFocus: true,
+    },
   });
   const { data: messages, isLoading: messagesLoading } = useListDmMessages(
     threadId!,
@@ -103,6 +111,8 @@ export default function DmThread() {
       query: {
         enabled: !!threadId,
         queryKey: getListDmMessagesQueryKey(threadId!),
+        refetchInterval: 15_000,
+        refetchOnWindowFocus: true,
       },
     },
   );
@@ -237,6 +247,17 @@ export default function DmThread() {
     }
   }, [messages]);
 
+  // Client-side throttle so a burst of incoming messages (or the interval
+  // below, on an unlucky overlap) can't trip the server's key-request rate
+  // limit (5/min) — never ping more than once per 15s from this browser.
+  const lastKeyRequestAtRef = useRef(0);
+  const requestDmKeyAccessThrottled = (id: string) => {
+    const now = Date.now();
+    if (now - lastKeyRequestAtRef.current < 15_000) return;
+    lastKeyRequestAtRef.current = now;
+    requestDmKeyAccess.mutate({ threadId: id });
+  };
+
   useEffect(() => {
     onMessageRef.current = (msg) => {
       queryClient.setQueryData(
@@ -247,8 +268,32 @@ export default function DmThread() {
           return [...old, msg];
         },
       );
+      // A new message just arrived but this browser can't decrypt it (or
+      // anything else in the thread) yet — proactively ping for the key
+      // right now, while the sender is almost certainly still connected to
+      // this same thread page (they just sent from it), instead of waiting
+      // for them to notice and click "Restore access" themselves.
+      if (threadId && dmKeyStatus === "missing") {
+        requestDmKeyAccessThrottled(threadId);
+      }
     };
-  }, [threadId, queryClient, onMessageRef]);
+  }, [threadId, queryClient, onMessageRef, dmKeyStatus]);
+
+  // Belt-and-suspenders: key recovery is a best-effort live WS nudge, which
+  // only lands if the other participant happens to be connected to this
+  // exact thread page at that instant. Keep retrying at an interval for as
+  // long as we're stuck "missing" and there's something to decrypt, so a
+  // recovery attempt eventually overlaps with them being online, without
+  // requiring the person to notice and click the button themselves.
+  useEffect(() => {
+    if (!threadId || dmKeyStatus !== "missing" || !messages?.length) return;
+    requestDmKeyAccessThrottled(threadId);
+    const interval = setInterval(() => {
+      requestDmKeyAccessThrottled(threadId);
+    }, 30_000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId, dmKeyStatus, !!messages?.length]);
 
   useEffect(() => {
     onMessageUpdateRef.current = (msg) => {
