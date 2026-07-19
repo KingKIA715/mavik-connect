@@ -35,4 +35,6 @@ export interface DmThread {
   status: DmThreadStatus;
   /** Whether the current user was the one who started this thread. */
   isInitiatedByMe: boolean;
+  /** Whether the current user has pinned this thread to the top of their own chat list. Per-side, like the read receipts — the other participant pinning it doesn't affect your view. */
+  isPinned: boolean;
 }

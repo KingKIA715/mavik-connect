@@ -87,11 +87,21 @@ export interface Group {
   myLastReadAt?: string | null;
   /** Messages from other members created after myLastReadAt. */
   unreadCount: number;
+  /** Whether the current user has pinned this group to the top of their own chat list. Purely personal — pinning is per-member, not a group-wide setting. */
+  isPinned: boolean;
 }
 
 export interface GroupInput {
   /** @minLength 1 */
   name: string;
+}
+
+export interface SetPinnedInput {
+  pinned: boolean;
+}
+
+export interface PinnedResult {
+  isPinned: boolean;
 }
 
 export interface GroupMember {
@@ -311,6 +321,8 @@ export interface DmThread {
   status: DmThreadStatus;
   /** Whether the current user was the one who started this thread. */
   isInitiatedByMe: boolean;
+  /** Whether the current user has pinned this thread to the top of their own chat list. Per-side, like the read receipts — the other participant pinning it doesn't affect your view. */
+  isPinned: boolean;
 }
 
 export type RespondToDmThreadInputAction = typeof RespondToDmThreadInputAction[keyof typeof RespondToDmThreadInputAction];

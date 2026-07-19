@@ -78,6 +78,29 @@ export function myLastReadColumn(
   return thread.userAId === userId ? "userALastReadAt" : "userBLastReadAt";
 }
 
+/** Which dm_threads column to update when `userId` pins/unpins a thread. */
+export function myPinnedColumn(
+  thread: { userAId: string; userBId: string },
+  userId: string,
+): "userAPinnedAt" | "userBPinnedAt" {
+  return thread.userAId === userId ? "userAPinnedAt" : "userBPinnedAt";
+}
+
+/** "Mine" pinned-at timestamp, same left/right picking as getReadTimestamps. */
+export function myPinnedAt(
+  thread: {
+    userAId: string;
+    userBId: string;
+    userAPinnedAt: Date | null;
+    userBPinnedAt: Date | null;
+  },
+  userId: string,
+): Date | null {
+  return thread.userAId === userId
+    ? thread.userAPinnedAt
+    : thread.userBPinnedAt;
+}
+
 /**
  * Finds the existing DM thread between two users, or creates one. Threads
  * are stored with userAId/userBId in canonical (sorted) order so each pair

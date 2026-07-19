@@ -22,4 +22,6 @@ export interface Group {
   myLastReadAt?: string | null;
   /** Messages from other members created after myLastReadAt. */
   unreadCount: number;
+  /** Whether the current user has pinned this group to the top of their own chat list. Purely personal — pinning is per-member, not a group-wide setting. */
+  isPinned: boolean;
 }

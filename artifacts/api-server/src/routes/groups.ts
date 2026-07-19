@@ -20,6 +20,8 @@ import {
   SetGroupKeyBody,
   SetGroupKeyResponse,
   MarkGroupReadResponse,
+  SetGroupPinnedBody,
+  SetGroupPinnedResponse,
   SetGroupAvatarBody,
   SetGroupAvatarResponse,
   ToggleMessageReactionBody,
@@ -94,6 +96,7 @@ router.get("/groups", async (req, res): Promise<void> => {
     .select({
       groupId: groupMembersTable.groupId,
       lastReadAt: groupMembersTable.lastReadAt,
+      pinnedAt: groupMembersTable.pinnedAt,
     })
     .from(groupMembersTable)
     .where(
@@ -104,6 +107,9 @@ router.get("/groups", async (req, res): Promise<void> => {
     );
   const myLastReadByGroup = new Map(
     myMemberships.map((m) => [m.groupId, m.lastReadAt]),
+  );
+  const myPinnedByGroup = new Map(
+    myMemberships.map((m) => [m.groupId, m.pinnedAt]),
   );
 
   // Unread badge count per group: messages from anyone else, created after
@@ -144,6 +150,7 @@ router.get("/groups", async (req, res): Promise<void> => {
       lastMessagePreview: lastMessage?.content ?? null,
       myLastReadAt: toIsoOrNull(myLastReadByGroup.get(group.id)),
       unreadCount: unreadCountByGroup.get(group.id) ?? 0,
+      isPinned: !!myPinnedByGroup.get(group.id),
     };
   });
 
@@ -184,6 +191,7 @@ router.post("/groups", async (req, res): Promise<void> => {
       lastMessagePreview: null,
       myLastReadAt: null,
       unreadCount: 0,
+      isPinned: false,
     }),
   );
 });
@@ -457,6 +465,41 @@ router.put("/groups/:groupId/read", async (req, res): Promise<void> => {
   broadcastToGroup(groupId, { type: "read", userId, lastReadAt: toIso(now) });
 
   res.json(MarkGroupReadResponse.parse({ lastReadAt: toIso(now) }));
+});
+
+router.put("/groups/:groupId/pin", async (req, res): Promise<void> => {
+  const groupId = parseGroupId(req.params.groupId);
+  if (groupId === null) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const parsed = SetGroupPinnedBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const userId = req.userId!;
+  const member = await isGroupMember(groupId, userId);
+  if (!member) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  // Purely personal — only ever touches the caller's own membership row,
+  // never broadcast to anyone else.
+  await db
+    .update(groupMembersTable)
+    .set({ pinnedAt: parsed.data.pinned ? new Date() : null })
+    .where(
+      and(
+        eq(groupMembersTable.groupId, groupId),
+        eq(groupMembersTable.userId, userId),
+      ),
+    );
+
+  res.json(SetGroupPinnedResponse.parse({ isPinned: parsed.data.pinned }));
 });
 
 router.post("/groups/:groupId/keys", async (req, res): Promise<void> => {

@@ -1,4 +1,10 @@
-import { integer, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { groupsTable } from "./groups";
@@ -21,6 +27,10 @@ export const groupMembersTable = pgTable(
     // the last time this member marked the group as read. Null means
     // "never opened this group".
     lastReadAt: timestamp("last_read_at", { withTimezone: true }),
+    // When this member pinned the group to the top of their own chat list.
+    // Null means "not pinned". Per-member (not a group-wide setting) since
+    // pinning is a personal organizational preference, not shared state.
+    pinnedAt: timestamp("pinned_at", { withTimezone: true }),
   },
   (table) => [primaryKey({ columns: [table.groupId, table.userId] })],
 );

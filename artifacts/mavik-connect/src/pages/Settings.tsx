@@ -175,242 +175,261 @@ export default function Settings() {
   }
 
   return (
-    <div className="p-6 md:p-10 space-y-6 max-w-2xl mx-auto w-full">
-      <div>
-        <h1 className="text-3xl font-serif font-bold">Profile Settings</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage your personal information.
-        </p>
-      </div>
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Fixed header: title + overview card + tab switcher never scroll
+          away — kept compact so it leaves as much room as possible for the
+          scrolling tab content below, especially on short/mobile screens. */}
+      <div className="flex-shrink-0 px-6 md:px-10 pt-4 md:pt-6 pb-3 max-w-2xl mx-auto w-full space-y-3">
+        <h1 className="text-xl sm:text-2xl font-serif font-bold">
+          Profile Settings
+        </h1>
 
-      {/* Overview — stacks on narrow screens and truncates long
-          names/emails instead of overflowing the card. */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row items-center sm:items-center gap-4 sm:gap-6 text-center sm:text-left">
-            <Avatar className="w-20 h-20 border-4 border-background shadow-sm flex-shrink-0">
-              {profile.avatarUrl ? (
-                <AvatarImage src={profile.avatarUrl} alt={profile.name} />
-              ) : null}
-              <AvatarFallback className="text-2xl bg-primary/10 text-primary">
-                {(profile.name || profile.email).charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <h2 className="text-xl font-bold truncate">
-                {profile.name || "Unnamed"}
-              </h2>
-              <p className="text-muted-foreground truncate">{profile.email}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Member since{" "}
-                {format(new Date(profile.createdAt), "MMMM d, yyyy")}
-              </p>
+        {/* Overview — stacks on narrow screens and truncates long
+            names/emails instead of overflowing the card. */}
+        <Card>
+          <CardContent className="py-3 px-4 sm:py-4">
+            <div className="flex items-center gap-3 sm:gap-4 text-left">
+              <Avatar className="w-12 h-12 border-2 border-background shadow-sm flex-shrink-0">
+                {profile.avatarUrl ? (
+                  <AvatarImage src={profile.avatarUrl} alt={profile.name} />
+                ) : null}
+                <AvatarFallback className="text-base bg-primary/10 text-primary">
+                  {(profile.name || profile.email).charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-bold truncate">
+                  {profile.name || "Unnamed"}
+                </h2>
+                <p className="text-sm text-muted-foreground truncate">
+                  {profile.email}
+                </p>
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Profile vs. Security are separated into tabs — both live on the
           same page, but the tab bar makes "where's the password field"
           immediately visible instead of requiring a scroll past the
-          profile form to find it. */}
-      <Tabs defaultValue="profile">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-        </TabsList>
+          profile form to find it. Each tab panel scrolls independently in
+          the remaining height, so switching tabs doesn't lose your scroll
+          position in the other one. */}
+      <Tabs
+        defaultValue="profile"
+        className="flex-1 flex flex-col overflow-hidden min-h-0"
+      >
+        <div className="flex-shrink-0 px-6 md:px-10 max-w-2xl mx-auto w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="security">Security</TabsTrigger>
+          </TabsList>
+        </div>
 
-        <TabsContent value="profile" className="space-y-6 mt-4">
-          {/* Profile — plain fields on this app's own users table. No Clerk
-              routing, no SMS/OTP verification for the phone number. */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-serif text-lg flex items-center gap-2">
-                <Phone className="w-4 h-4" /> Profile
-              </CardTitle>
-              <CardDescription>
-                Your name (shown to family members) and an optional phone
-                number.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSaveProfile} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName">First name</Label>
-                    <Input
-                      id="firstName"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      required
-                    />
+        <TabsContent
+          value="profile"
+          className="flex-1 overflow-y-auto min-h-0 mt-0"
+        >
+          <div className="px-6 md:px-10 py-4 max-w-2xl mx-auto w-full space-y-6">
+            {/* Profile — plain fields on this app's own users table. No Clerk
+                routing, no SMS/OTP verification for the phone number. */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-serif text-lg flex items-center gap-2">
+                  <Phone className="w-4 h-4" /> Profile
+                </CardTitle>
+                <CardDescription>
+                  Your name (shown to family members) and an optional phone
+                  number.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSaveProfile} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName">First name</Label>
+                      <Input
+                        id="firstName"
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName">Last name</Label>
+                      <Input
+                        id="lastName"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        required
+                      />
+                    </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="lastName">Last name</Label>
+                    <Label htmlFor="phone">Phone number</Label>
                     <Input
-                      id="lastName"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      required
+                      id="phone"
+                      type="tel"
+                      value={phoneInput}
+                      onChange={(e) => {
+                        setPhoneInput(e.target.value);
+                        setPhoneError(null);
+                      }}
+                      placeholder="+14155551234"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Optional. Include your country code, e.g. +1 for the US.
+                      Not verified — just stored on your profile.
+                    </p>
+                    {phoneError && (
+                      <p className="text-xs text-destructive">{phoneError}</p>
+                    )}
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone number</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={phoneInput}
-                    onChange={(e) => {
-                      setPhoneInput(e.target.value);
-                      setPhoneError(null);
-                    }}
-                    placeholder="+14155551234"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Optional. Include your country code, e.g. +1 for the US. Not
-                    verified — just stored on your profile.
-                  </p>
-                  {phoneError && (
-                    <p className="text-xs text-destructive">{phoneError}</p>
-                  )}
-                </div>
-                <Button
-                  type="submit"
-                  disabled={
-                    isSavingProfile || !firstName.trim() || !lastName.trim()
-                  }
-                >
-                  {isSavingProfile ? "Saving..." : "Save Profile"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+                  <Button
+                    type="submit"
+                    disabled={
+                      isSavingProfile || !firstName.trim() || !lastName.trim()
+                    }
+                  >
+                    {isSavingProfile ? "Saving..." : "Save Profile"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
-        <TabsContent value="security" className="space-y-6 mt-4">
-          {/* Password */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-serif text-lg">Password</CardTitle>
-              <CardDescription>Change your account password.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleChangePassword} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="currentPassword">Current password</Label>
-                  <Input
-                    id="currentPassword"
-                    type="password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    autoComplete="current-password"
-                  />
-                </div>
-                <Separator />
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <TabsContent
+          value="security"
+          className="flex-1 overflow-y-auto min-h-0 mt-0"
+        >
+          <div className="px-6 md:px-10 py-4 max-w-2xl mx-auto w-full space-y-6">
+            {/* Password */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-serif text-lg">Password</CardTitle>
+                <CardDescription>Change your account password.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleChangePassword} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="newPassword">New password</Label>
+                    <Label htmlFor="currentPassword">Current password</Label>
                     <Input
-                      id="newPassword"
+                      id="currentPassword"
                       type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      autoComplete="new-password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      autoComplete="current-password"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="confirmPassword">
-                      Confirm new password
-                    </Label>
-                    <Input
-                      id="confirmPassword"
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      autoComplete="new-password"
-                    />
+                  <Separator />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="newPassword">New password</Label>
+                      <Input
+                        id="newPassword"
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        autoComplete="new-password"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="confirmPassword">
+                        Confirm new password
+                      </Label>
+                      <Input
+                        id="confirmPassword"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        autoComplete="new-password"
+                      />
+                    </div>
                   </div>
-                </div>
-                <Button
-                  type="submit"
-                  disabled={
-                    isSavingPassword ||
-                    !currentPassword ||
-                    !newPassword ||
-                    !confirmPassword
-                  }
-                >
-                  {isSavingPassword ? "Updating..." : "Change Password"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+                  <Button
+                    type="submit"
+                    disabled={
+                      isSavingPassword ||
+                      !currentPassword ||
+                      !newPassword ||
+                      !confirmPassword
+                    }
+                  >
+                    {isSavingPassword ? "Updating..." : "Change Password"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
 
-          {/* Key activity */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-serif text-lg flex items-center gap-2">
-                <Key className="w-4 h-4" /> Encryption Key Activity
-              </CardTitle>
-              <CardDescription>
-                A timeline of when your message-encryption key was set up or
-                changed, and roughly where from. This app keeps one active key
-                per account rather than tracking individual devices, so this is
-                a history for your own reference — not a list you can revoke
-                devices from. If you don't recognize an entry, the safest step
-                is changing your password above.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {!keyHistory || keyHistory.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No key activity recorded yet.
-                </p>
-              ) : (
-                <ul className="space-y-1">
-                  {keyHistory.map((entry, i) => {
-                    const { label, isMobile } = parseUserAgent(entry.userAgent);
-                    const isMostRecent = i === 0;
-                    const DeviceIcon = isMobile ? Smartphone : Monitor;
-                    return (
-                      <li
-                        key={i}
-                        className="flex items-center gap-3 text-sm border-b border-border last:border-0 py-2.5 first:pt-0 last:pb-0"
-                      >
-                        <DeviceIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-foreground truncate">
-                              {label}
+            {/* Key activity */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-serif text-lg flex items-center gap-2">
+                  <Key className="w-4 h-4" /> Encryption Key Activity
+                </CardTitle>
+                <CardDescription>
+                  A timeline of when your message-encryption key was set up or
+                  changed, and roughly where from. This app keeps one active key
+                  per account rather than tracking individual devices, so this
+                  is a history for your own reference — not a list you can
+                  revoke devices from. If you don't recognize an entry, the
+                  safest step is changing your password above.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!keyHistory || keyHistory.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No key activity recorded yet.
+                  </p>
+                ) : (
+                  <ul className="space-y-1">
+                    {keyHistory.map((entry, i) => {
+                      const { label, isMobile } = parseUserAgent(
+                        entry.userAgent,
+                      );
+                      const isMostRecent = i === 0;
+                      const DeviceIcon = isMobile ? Smartphone : Monitor;
+                      return (
+                        <li
+                          key={i}
+                          className="flex items-center gap-3 text-sm border-b border-border last:border-0 py-2.5 first:pt-0 last:pb-0"
+                        >
+                          <DeviceIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-foreground truncate">
+                                {label}
+                              </span>
+                              {isMostRecent && (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-[10px] font-medium px-1.5 py-0.5 bg-emerald-100 text-emerald-700 hover:bg-emerald-100 flex-shrink-0"
+                                >
+                                  Most recent
+                                </Badge>
+                              )}
+                            </div>
+                            <span className="text-muted-foreground text-xs">
+                              {format(
+                                new Date(entry.occurredAt),
+                                "MMM d, yyyy 'at' h:mm a",
+                              )}
+                              {" · "}
+                              {formatDistanceToNow(new Date(entry.occurredAt), {
+                                addSuffix: true,
+                              })}
                             </span>
-                            {isMostRecent && (
-                              <Badge
-                                variant="secondary"
-                                className="text-[10px] font-medium px-1.5 py-0.5 bg-emerald-100 text-emerald-700 hover:bg-emerald-100 flex-shrink-0"
-                              >
-                                Most recent
-                              </Badge>
-                            )}
                           </div>
-                          <span className="text-muted-foreground text-xs">
-                            {format(
-                              new Date(entry.occurredAt),
-                              "MMM d, yyyy 'at' h:mm a",
-                            )}
-                            {" · "}
-                            {formatDistanceToNow(new Date(entry.occurredAt), {
-                              addSuffix: true,
-                            })}
-                          </span>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

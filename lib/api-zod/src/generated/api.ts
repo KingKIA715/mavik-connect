@@ -152,7 +152,8 @@ export const ListGroupsResponseItem = zod.object({
   "lastMessageAt": zod.string().nullish(),
   "lastMessagePreview": zod.string().nullish(),
   "myLastReadAt": zod.string().nullish(),
-  "unreadCount": zod.number().describe('Messages from other members created after myLastReadAt.')
+  "unreadCount": zod.number().describe('Messages from other members created after myLastReadAt.'),
+  "isPinned": zod.boolean().describe('Whether the current user has pinned this group to the top of their own chat list. Purely personal — pinning is per-member, not a group-wide setting.\n')
 })
 export const ListGroupsResponse = zod.array(ListGroupsResponseItem)
 
@@ -177,7 +178,8 @@ export const CreateGroupResponse = zod.object({
   "lastMessageAt": zod.string().nullish(),
   "lastMessagePreview": zod.string().nullish(),
   "myLastReadAt": zod.string().nullish(),
-  "unreadCount": zod.number().describe('Messages from other members created after myLastReadAt.')
+  "unreadCount": zod.number().describe('Messages from other members created after myLastReadAt.'),
+  "isPinned": zod.boolean().describe('Whether the current user has pinned this group to the top of their own chat list. Purely personal — pinning is per-member, not a group-wide setting.\n')
 })
 
 
@@ -317,6 +319,23 @@ export const MarkGroupReadParams = zod.object({
 
 export const MarkGroupReadResponse = zod.object({
   "lastReadAt": zod.string()
+})
+
+
+/**
+ * Purely personal — this only affects how the group sorts in the caller's own list, not for any other member.
+ * @summary Pin or unpin a group in the current user's own chat list
+ */
+export const SetGroupPinnedParams = zod.object({
+  "groupId": zod.coerce.string()
+})
+
+export const SetGroupPinnedBody = zod.object({
+  "pinned": zod.boolean()
+})
+
+export const SetGroupPinnedResponse = zod.object({
+  "isPinned": zod.boolean()
 })
 
 
@@ -582,7 +601,8 @@ export const ListDmThreadsResponseItem = zod.object({
   "otherUserLastReadAt": zod.string().nullish().describe('Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n'),
   "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.'),
   "status": zod.enum(['pending', 'accepted', 'rejected']).describe('Message-request status. \"pending\": only the initiator can send, until the other side accepts\/rejects via PUT \/dms\/{threadId}\/respond. \"accepted\": both sides can send freely. \"rejected\": a one-directional permanent block on the initiator only — see canSendDm in the API server.\n'),
-  "isInitiatedByMe": zod.boolean().describe('Whether the current user was the one who started this thread.')
+  "isInitiatedByMe": zod.boolean().describe('Whether the current user was the one who started this thread.'),
+  "isPinned": zod.boolean().describe('Whether the current user has pinned this thread to the top of their own chat list. Per-side, like the read receipts — the other participant pinning it doesn\'t affect your view.\n')
 })
 export const ListDmThreadsResponse = zod.array(ListDmThreadsResponseItem)
 
@@ -609,7 +629,8 @@ export const CreateDmThreadResponse = zod.object({
   "otherUserLastReadAt": zod.string().nullish().describe('Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n'),
   "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.'),
   "status": zod.enum(['pending', 'accepted', 'rejected']).describe('Message-request status. \"pending\": only the initiator can send, until the other side accepts\/rejects via PUT \/dms\/{threadId}\/respond. \"accepted\": both sides can send freely. \"rejected\": a one-directional permanent block on the initiator only — see canSendDm in the API server.\n'),
-  "isInitiatedByMe": zod.boolean().describe('Whether the current user was the one who started this thread.')
+  "isInitiatedByMe": zod.boolean().describe('Whether the current user was the one who started this thread.'),
+  "isPinned": zod.boolean().describe('Whether the current user has pinned this thread to the top of their own chat list. Per-side, like the read receipts — the other participant pinning it doesn\'t affect your view.\n')
 })
 
 
@@ -635,7 +656,8 @@ export const GetDmThreadResponse = zod.object({
   "otherUserLastReadAt": zod.string().nullish().describe('Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n'),
   "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.'),
   "status": zod.enum(['pending', 'accepted', 'rejected']).describe('Message-request status. \"pending\": only the initiator can send, until the other side accepts\/rejects via PUT \/dms\/{threadId}\/respond. \"accepted\": both sides can send freely. \"rejected\": a one-directional permanent block on the initiator only — see canSendDm in the API server.\n'),
-  "isInitiatedByMe": zod.boolean().describe('Whether the current user was the one who started this thread.')
+  "isInitiatedByMe": zod.boolean().describe('Whether the current user was the one who started this thread.'),
+  "isPinned": zod.boolean().describe('Whether the current user has pinned this thread to the top of their own chat list. Per-side, like the read receipts — the other participant pinning it doesn\'t affect your view.\n')
 })
 
 
@@ -707,6 +729,23 @@ export const MarkDmThreadReadParams = zod.object({
 
 export const MarkDmThreadReadResponse = zod.object({
   "lastReadAt": zod.string()
+})
+
+
+/**
+ * Purely personal, like read receipts — only affects how this thread sorts in the caller's own list, not the other participant's.
+ * @summary Pin or unpin a DM thread in the current user's own chat list
+ */
+export const SetDmThreadPinnedParams = zod.object({
+  "threadId": zod.coerce.string()
+})
+
+export const SetDmThreadPinnedBody = zod.object({
+  "pinned": zod.boolean()
+})
+
+export const SetDmThreadPinnedResponse = zod.object({
+  "isPinned": zod.boolean()
 })
 
 

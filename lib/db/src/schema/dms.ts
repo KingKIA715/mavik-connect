@@ -31,6 +31,11 @@ export const dmThreadsTable = pgTable(
     // 2 participants. Null means "never opened this thread".
     userALastReadAt: timestamp("user_a_last_read_at", { withTimezone: true }),
     userBLastReadAt: timestamp("user_b_last_read_at", { withTimezone: true }),
+    // Pinning, same per-side convention as the read-receipt columns above:
+    // each participant can pin this thread to the top of their own chat
+    // list independently of the other. Null means "not pinned".
+    userAPinnedAt: timestamp("user_a_pinned_at", { withTimezone: true }),
+    userBPinnedAt: timestamp("user_b_pinned_at", { withTimezone: true }),
     // Message-request flow: userAId/userBId are stored in canonical sorted
     // order (see comment above) so they can't tell us who *started* the
     // conversation — initiatorId tracks that separately. Nullable because

@@ -23,6 +23,8 @@ import {
   SetDmKeyBody,
   SetDmKeyResponse,
   MarkDmThreadReadResponse,
+  SetDmThreadPinnedBody,
+  SetDmThreadPinnedResponse,
   RespondToDmThreadBody,
   RespondToDmThreadResponse,
   ToggleDmMessageReactionBody,
@@ -39,6 +41,8 @@ import {
   findOrCreateThread,
   getReadTimestamps,
   myLastReadColumn,
+  myPinnedColumn,
+  myPinnedAt,
   canSendDm,
 } from "../lib/dmAccess";
 import { broadcastToThread, sendToUserInThread } from "../ws/hub";
@@ -273,6 +277,7 @@ router.get("/dms", async (req, res): Promise<void> => {
       unreadCount: unreadCountByThread.get(thread.id) ?? 0,
       status: thread.status,
       isInitiatedByMe: thread.initiatorId === userId,
+      isPinned: !!myPinnedAt(thread, userId),
     };
   });
 
@@ -343,6 +348,7 @@ router.post("/dms", async (req, res): Promise<void> => {
       unreadCount: 0,
       status: thread.status,
       isInitiatedByMe: thread.initiatorId === userId,
+      isPinned: !!myPinnedAt(thread, userId),
     }),
   );
 });
@@ -426,6 +432,7 @@ router.get("/dms/:threadId", async (req, res): Promise<void> => {
       unreadCount: unreadRows.length,
       status: thread.status,
       isInitiatedByMe: thread.initiatorId === userId,
+      isPinned: !!myPinnedAt(thread, userId),
     }),
   );
 });
@@ -486,6 +493,40 @@ router.put("/dms/:threadId/read", async (req, res): Promise<void> => {
   broadcastToThread(threadId, { type: "read", userId, lastReadAt: toIso(now) });
 
   res.json(MarkDmThreadReadResponse.parse({ lastReadAt: toIso(now) }));
+});
+
+router.put("/dms/:threadId/pin", async (req, res): Promise<void> => {
+  const threadId = parseThreadId(req.params.threadId);
+  if (threadId === null) {
+    res.status(404).json({ error: "Thread not found" });
+    return;
+  }
+
+  const parsed = SetDmThreadPinnedBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const userId = req.userId!;
+  const [thread] = await db
+    .select()
+    .from(dmThreadsTable)
+    .where(eq(dmThreadsTable.id, threadId));
+  if (!thread || (thread.userAId !== userId && thread.userBId !== userId)) {
+    res.status(404).json({ error: "Thread not found" });
+    return;
+  }
+
+  // Purely personal, like read receipts — only ever touches "my" pinned
+  // column, never broadcast to the other participant.
+  const column = myPinnedColumn(thread, userId);
+  await db
+    .update(dmThreadsTable)
+    .set({ [column]: parsed.data.pinned ? new Date() : null })
+    .where(eq(dmThreadsTable.id, threadId));
+
+  res.json(SetDmThreadPinnedResponse.parse({ isPinned: parsed.data.pinned }));
 });
 
 router.put("/dms/:threadId/respond", async (req, res): Promise<void> => {

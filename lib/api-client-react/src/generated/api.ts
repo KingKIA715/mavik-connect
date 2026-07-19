@@ -44,6 +44,7 @@ import type {
   MessageEditInput,
   MessageInput,
   MessageReaction,
+  PinnedResult,
   PublicKeyInput,
   ReadReceipt,
   RespondToDmThreadInput,
@@ -52,6 +53,7 @@ import type {
   SearchUserResult,
   SearchUsersByNameParams,
   SetGroupAvatarInput,
+  SetPinnedInput,
   ToggleReactionInput,
   UpdateMyProfileInput,
   UserProfile
@@ -1369,6 +1371,79 @@ export const useMarkGroupRead = <TError = ErrorType<void>,
       return useMutation(getMarkGroupReadMutationOptions(options));
     }
 
+export const getSetGroupPinnedUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/pin`
+}
+
+/**
+ * Purely personal — this only affects how the group sorts in the caller's own list, not for any other member.
+ * @summary Pin or unpin a group in the current user's own chat list
+ */
+export const setGroupPinned = async (groupId: string,
+    setPinnedInput: SetPinnedInput, options?: RequestInit): Promise<PinnedResult> => {
+
+  return customFetch<PinnedResult>(getSetGroupPinnedUrl(groupId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(setPinnedInput)
+  }
+);}
+
+
+
+
+
+export const getSetGroupPinnedMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setGroupPinned>>, TError,{groupId: string;data: BodyType<SetPinnedInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setGroupPinned>>, TError,{groupId: string;data: BodyType<SetPinnedInput>}, TContext> => {
+
+const mutationKey = ['setGroupPinned'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setGroupPinned>>, {groupId: string;data: BodyType<SetPinnedInput>}> = (props) => {
+          const {groupId,data} = props ?? {};
+
+          return  setGroupPinned(groupId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetGroupPinnedMutationResult = NonNullable<Awaited<ReturnType<typeof setGroupPinned>>>
+    export type SetGroupPinnedMutationBody = BodyType<SetPinnedInput>
+    export type SetGroupPinnedMutationError = ErrorType<void>
+
+    /**
+ * @summary Pin or unpin a group in the current user's own chat list
+ */
+export const useSetGroupPinned = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setGroupPinned>>, TError,{groupId: string;data: BodyType<SetPinnedInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setGroupPinned>>,
+        TError,
+        {groupId: string;data: BodyType<SetPinnedInput>},
+        TContext
+      > => {
+      return useMutation(getSetGroupPinnedMutationOptions(options));
+    }
+
 export const getRemoveGroupMemberUrl = (groupId: string,
     userId: string,) => {
 
@@ -2419,6 +2494,79 @@ export const useMarkDmThreadRead = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getMarkDmThreadReadMutationOptions(options));
+    }
+
+export const getSetDmThreadPinnedUrl = (threadId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/pin`
+}
+
+/**
+ * Purely personal, like read receipts — only affects how this thread sorts in the caller's own list, not the other participant's.
+ * @summary Pin or unpin a DM thread in the current user's own chat list
+ */
+export const setDmThreadPinned = async (threadId: string,
+    setPinnedInput: SetPinnedInput, options?: RequestInit): Promise<PinnedResult> => {
+
+  return customFetch<PinnedResult>(getSetDmThreadPinnedUrl(threadId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(setPinnedInput)
+  }
+);}
+
+
+
+
+
+export const getSetDmThreadPinnedMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setDmThreadPinned>>, TError,{threadId: string;data: BodyType<SetPinnedInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setDmThreadPinned>>, TError,{threadId: string;data: BodyType<SetPinnedInput>}, TContext> => {
+
+const mutationKey = ['setDmThreadPinned'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setDmThreadPinned>>, {threadId: string;data: BodyType<SetPinnedInput>}> = (props) => {
+          const {threadId,data} = props ?? {};
+
+          return  setDmThreadPinned(threadId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetDmThreadPinnedMutationResult = NonNullable<Awaited<ReturnType<typeof setDmThreadPinned>>>
+    export type SetDmThreadPinnedMutationBody = BodyType<SetPinnedInput>
+    export type SetDmThreadPinnedMutationError = ErrorType<void>
+
+    /**
+ * @summary Pin or unpin a DM thread in the current user's own chat list
+ */
+export const useSetDmThreadPinned = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setDmThreadPinned>>, TError,{threadId: string;data: BodyType<SetPinnedInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setDmThreadPinned>>,
+        TError,
+        {threadId: string;data: BodyType<SetPinnedInput>},
+        TContext
+      > => {
+      return useMutation(getSetDmThreadPinnedMutationOptions(options));
     }
 
 export const getRespondToDmThreadUrl = (threadId: string,) => {

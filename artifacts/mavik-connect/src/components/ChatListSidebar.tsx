@@ -1,14 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListGroups,
   useCreateGroup,
   useSetGroupKey,
+  useSetGroupPinned,
   getListGroupsQueryKey,
   useListDmThreads,
   useCreateDmThread,
   useSetDmKey,
+  useSetDmThreadPinned,
   useGetMyProfile,
   useSearchUsersByName,
   getSearchUsersByNameQueryKey,
@@ -30,7 +32,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Users, MessageCircle } from "lucide-react";
+import { Plus, Users, MessageCircle, Pin, PinOff } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
   useEncryption,
@@ -48,7 +50,7 @@ export function ChatListSidebar({
   activeGroupId?: string;
   activeThreadId?: string;
 }) {
-  const [tab, setTab] = useState<Tab>(activeThreadId ? "dms" : "groups");
+  const [tab, setTab] = useState<Tab>(activeGroupId ? "groups" : "dms");
 
   const { data: groups, isLoading: groupsLoading } = useListGroups();
   const { data: threads, isLoading: threadsLoading } = useListDmThreads({
@@ -65,13 +67,72 @@ export function ChatListSidebar({
     },
   });
   const { data: profile } = useGetMyProfile();
+
+  // Pinned items float to the top, otherwise keeping the server's existing
+  // order (most-recent-first) — Array.prototype.sort is stable, so a
+  // comparator that only distinguishes pinned-vs-not preserves that
+  // relative order within each group.
+  const sortedGroups = useMemo(
+    () =>
+      groups
+        ? [...groups].sort((a, b) => Number(b.isPinned) - Number(a.isPinned))
+        : groups,
+    [groups],
+  );
+  const sortedThreads = useMemo(
+    () =>
+      threads
+        ? [...threads].sort((a, b) => Number(b.isPinned) - Number(a.isPinned))
+        : threads,
+    [threads],
+  );
   const createGroup = useCreateGroup();
   const setGroupKey = useSetGroupKey();
+  const setGroupPinned = useSetGroupPinned();
   const createDmThread = useCreateDmThread();
   const setDmKey = useSetDmKey();
+  const setDmThreadPinned = useSetDmThreadPinned();
   const queryClient = useQueryClient();
   const identity = useEncryption();
   const { toast } = useToast();
+
+  const handleToggleGroupPinned = (
+    e: React.MouseEvent,
+    groupId: string,
+    currentlyPinned: boolean,
+  ) => {
+    // Stop the click from bubbling up into the wrapping <Link> and
+    // navigating into the group — this button lives inside that Link.
+    e.preventDefault();
+    e.stopPropagation();
+    setGroupPinned.mutate(
+      { groupId, data: { pinned: !currentlyPinned } },
+      {
+        onSuccess: () =>
+          queryClient.invalidateQueries({
+            queryKey: getListGroupsQueryKey(),
+          }),
+      },
+    );
+  };
+
+  const handleToggleThreadPinned = (
+    e: React.MouseEvent,
+    threadId: string,
+    currentlyPinned: boolean,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDmThreadPinned.mutate(
+      { threadId, data: { pinned: !currentlyPinned } },
+      {
+        onSuccess: () =>
+          queryClient.invalidateQueries({
+            queryKey: getListDmThreadsQueryKey(),
+          }),
+      },
+    );
+  };
 
   const [newGroupName, setNewGroupName] = useState("");
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
@@ -179,16 +240,16 @@ export function ChatListSidebar({
       {/* Category tabs */}
       <div className="flex-none flex items-center gap-1 p-2 border-b border-border">
         <button
-          onClick={() => setTab("groups")}
-          className={`flex-1 text-sm font-medium py-2 rounded-md transition-colors ${tab === "groups" ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-        >
-          Groups
-        </button>
-        <button
           onClick={() => setTab("dms")}
           className={`flex-1 text-sm font-medium py-2 rounded-md transition-colors ${tab === "dms" ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted"}`}
         >
           Direct Messages
+        </button>
+        <button
+          onClick={() => setTab("groups")}
+          className={`flex-1 text-sm font-medium py-2 rounded-md transition-colors ${tab === "groups" ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+        >
+          Groups
         </button>
       </div>
 
@@ -209,12 +270,12 @@ export function ChatListSidebar({
               No groups yet. Tap the + button to create one.
             </div>
           ) : (
-            groups?.map((group) => {
+            sortedGroups?.map((group) => {
               const isUnread = group.unreadCount > 0;
               return (
                 <Link key={group.id} href={`/app/groups/${group.id}`}>
                   <div
-                    className={`flex items-center gap-3 px-3 py-3 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors ${activeGroupId === group.id ? "bg-secondary" : "hover:bg-muted/60"}`}
+                    className={`group/row flex items-center gap-3 px-3 py-3 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors ${activeGroupId === group.id ? "bg-secondary" : "hover:bg-muted/60"}`}
                   >
                     <Avatar className="w-11 h-11 border shadow-sm flex-shrink-0">
                       {group.avatarUrl && <AvatarImage src={group.avatarUrl} />}
@@ -225,8 +286,11 @@ export function ChatListSidebar({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <span
-                          className={`truncate text-sm ${isUnread ? "font-semibold" : "font-medium"}`}
+                          className={`truncate text-sm flex items-center gap-1.5 ${isUnread ? "font-semibold" : "font-medium"}`}
                         >
+                          {group.isPinned && (
+                            <Pin className="w-3 h-3 text-primary/70 flex-shrink-0 fill-current" />
+                          )}
                           {group.name}
                         </span>
                         {group.lastMessageAt && (
@@ -253,6 +317,21 @@ export function ChatListSidebar({
                         )}
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={(e) =>
+                        handleToggleGroupPinned(e, group.id, group.isPinned)
+                      }
+                      className={`flex-shrink-0 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-opacity ${group.isPinned ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"}`}
+                      aria-label={group.isPinned ? "Unpin group" : "Pin group"}
+                      title={group.isPinned ? "Unpin" : "Pin to top"}
+                    >
+                      {group.isPinned ? (
+                        <PinOff className="w-4 h-4" />
+                      ) : (
+                        <Pin className="w-4 h-4" />
+                      )}
+                    </button>
                   </div>
                 </Link>
               );
@@ -272,7 +351,7 @@ export function ChatListSidebar({
             No conversations yet. Tap the + button to message someone.
           </div>
         ) : (
-          threads?.map((thread) => {
+          sortedThreads?.map((thread) => {
             const isUnread = thread.unreadCount > 0;
             const isIncomingRequest =
               thread.status === "pending" && !thread.isInitiatedByMe;
@@ -281,7 +360,7 @@ export function ChatListSidebar({
             return (
               <Link key={thread.id} href={`/app/dms/${thread.id}`}>
                 <div
-                  className={`flex items-center gap-3 px-3 py-3 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors ${activeThreadId === thread.id ? "bg-secondary" : "hover:bg-muted/60"}`}
+                  className={`group/row flex items-center gap-3 px-3 py-3 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors ${activeThreadId === thread.id ? "bg-secondary" : "hover:bg-muted/60"}`}
                 >
                   <Avatar className="w-11 h-11 border shadow-sm flex-shrink-0">
                     {thread.otherUserAvatarUrl && (
@@ -296,6 +375,9 @@ export function ChatListSidebar({
                       <span
                         className={`truncate text-sm flex items-center gap-1.5 ${isUnread ? "font-semibold" : "font-medium"}`}
                       >
+                        {thread.isPinned && (
+                          <Pin className="w-3 h-3 text-primary/70 flex-shrink-0 fill-current" />
+                        )}
                         {thread.otherUserName}
                         {isIncomingRequest && (
                           <span className="flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 rounded-full px-1.5 py-0.5">
@@ -330,6 +412,25 @@ export function ChatListSidebar({
                       )}
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={(e) =>
+                      handleToggleThreadPinned(e, thread.id, thread.isPinned)
+                    }
+                    className={`flex-shrink-0 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-opacity ${thread.isPinned ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"}`}
+                    aria-label={
+                      thread.isPinned
+                        ? "Unpin conversation"
+                        : "Pin conversation"
+                    }
+                    title={thread.isPinned ? "Unpin" : "Pin to top"}
+                  >
+                    {thread.isPinned ? (
+                      <PinOff className="w-4 h-4" />
+                    ) : (
+                      <Pin className="w-4 h-4" />
+                    )}
+                  </button>
                 </div>
               </Link>
             );
@@ -349,11 +450,11 @@ export function ChatListSidebar({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" side="top">
-          <DropdownMenuItem onClick={() => setIsGroupDialogOpen(true)}>
-            <Users className="w-4 h-4 mr-2" /> Group Chat
-          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setIsDmDialogOpen(true)}>
             <MessageCircle className="w-4 h-4 mr-2" /> Direct Message
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setIsGroupDialogOpen(true)}>
+            <Users className="w-4 h-4 mr-2" /> Group Chat
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

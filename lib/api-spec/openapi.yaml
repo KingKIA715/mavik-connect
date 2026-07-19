@@ -415,6 +415,36 @@ paths:
         "404":
           description: Not found
 
+  /groups/{groupId}/pin:
+    put:
+      operationId: setGroupPinned
+      tags: [groups]
+      summary: Pin or unpin a group in the current user's own chat list
+      description: >
+        Purely personal — this only affects how the group sorts in the
+        caller's own list, not for any other member.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPinnedInput"
+      responses:
+        "200":
+          description: Updated pin state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PinnedResult"
+        "404":
+          description: Not found
+
   /groups/{groupId}/members/{userId}:
     delete:
       operationId: removeGroupMember
@@ -796,6 +826,36 @@ paths:
         "404":
           description: Not found
 
+  /dms/{threadId}/pin:
+    put:
+      operationId: setDmThreadPinned
+      tags: [dms]
+      summary: Pin or unpin a DM thread in the current user's own chat list
+      description: >
+        Purely personal, like read receipts — only affects how this thread
+        sorts in the caller's own list, not the other participant's.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPinnedInput"
+      responses:
+        "200":
+          description: Updated pin state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PinnedResult"
+        "404":
+          description: Not found
+
   /dms/{threadId}/respond:
     put:
       operationId: respondToDmThread
@@ -1135,7 +1195,8 @@ components:
 
     Group:
       type: object
-      required: [id, name, createdBy, createdAt, memberCount, unreadCount]
+      required:
+        [id, name, createdBy, createdAt, memberCount, unreadCount, isPinned]
       properties:
         id:
           type: string
@@ -1158,6 +1219,12 @@ components:
         unreadCount:
           type: integer
           description: Messages from other members created after myLastReadAt.
+        isPinned:
+          type: boolean
+          description: >
+            Whether the current user has pinned this group to the top of
+            their own chat list. Purely personal — pinning is per-member,
+            not a group-wide setting.
 
     GroupInput:
       type: object
@@ -1166,6 +1233,20 @@ components:
         name:
           type: string
           minLength: 1
+
+    SetPinnedInput:
+      type: object
+      required: [pinned]
+      properties:
+        pinned:
+          type: boolean
+
+    PinnedResult:
+      type: object
+      required: [isPinned]
+      properties:
+        isPinned:
+          type: boolean
 
     GroupMember:
       type: object
@@ -1429,6 +1510,7 @@ components:
           unreadCount,
           status,
           isInitiatedByMe,
+          isPinned,
         ]
       properties:
         id:
@@ -1473,6 +1555,12 @@ components:
         isInitiatedByMe:
           type: boolean
           description: Whether the current user was the one who started this thread.
+        isPinned:
+          type: boolean
+          description: >
+            Whether the current user has pinned this thread to the top of
+            their own chat list. Per-side, like the read receipts — the
+            other participant pinning it doesn't affect your view.
 
     RespondToDmThreadInput:
       type: object
