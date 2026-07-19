@@ -1,75 +1,152 @@
-# Fix: messages stuck on "Decrypting…" forever after clearing browser data
+# Mavik Connect
 
-Verified with a clean `pnpm run typecheck` (all 9 workspace projects) and a
-successful production build.
+A private, end-to-end-encrypted messaging app for families and small, close-knit groups — 1:1 direct messages and group chats, with text, voice messages, file sharing, replies, @mentions, and voice/video calls. Messages are encrypted client-side, so the server only ever stores ciphertext and wrapped keys — never plaintext.
 
-## Root cause
+---
 
-Each user's private encryption key lives only in that browser's
-`localStorage` — never backed up anywhere, by design (that's what makes it
-end-to-end). Clearing site data / browsing history wipes it. The app then
-generates a brand-new keypair, but the group/DM key stored server-side was
-wrapped for the *old* public key, so it can't be unwrapped anymore. A
-recovery mechanism already existed (the other participant re-shares the key
-when they reopen that conversation), but only fires if they happen to do
-that — there was no way to prompt them, and no way for the affected user to
-tell what was even happening.
+## Features
 
-**The bug making it worse:** the "Waiting for access" status pill that would
-explain this was coded `hidden sm:flex` — invisible below the `sm` breakpoint,
-i.e. **invisible on every phone**. So on mobile, people just saw messages
-stuck on "🔒 Decrypting…" forever with zero explanation — exactly what the
-screenshot showed.
+- **Groups and direct messages** — create a group, invite people, or start a 1:1 conversation by searching for someone by name or email.
+- **Message requests** — starting a new DM with someone sends a *request*, not an open inbox slot. The recipient accepts or declines before the conversation opens up. Declining is a one-directional, permanent block on the person who sent the request — the recipient can still reach out later themselves if they change their mind.
+- **Rich messaging** — text, file attachments, voice messages, reply/quote, @mentions, message reactions, edit/delete.
+- **System messages** — when someone leaves or is removed from a group, a plain-text system message records it in the chat history for everyone still there.
+- **Voice & video calls** — WebRTC calls, signaled over the existing WebSocket connection.
+- **Profile** — first/last name and an optional phone number (format-checked, not SMS-verified), editable from Settings.
+- **End-to-end encryption** — every user has a client-side RSA-OAEP keypair (private key never leaves the browser); every group/DM has an AES-GCM key, wrapped once per member with that member's public key. The server only ever handles ciphertext and wrapped keys.
 
-## What changed
+---
 
-**Status pill (`ChatRoom.tsx`, `DmThread.tsx`)**
-- No longer hidden on mobile — icon always shows; the text label collapses
-  to icon-only below `sm` to save space, rather than disappearing entirely.
-- The "missing" pill is now a tappable button: tapping it both retries
-  fetching the key and requests a re-share (see below).
+## Tech stack
 
-**Honest per-message state**
-- Previously every undecrypted message showed "🔒 Decrypting…" forever,
-  which reads as "in progress" even when it's actually stuck waiting on
-  another person. Now: if the key is confirmed missing, messages/files/voice
-  bubbles say "🔒 Waiting for access" instead — same idea, but doesn't imply
-  something's actively about to resolve on its own.
-- A banner now appears above the message list itself (not just a small
-  header pill) when the key is missing, explaining what happened in plain
-  language, with a "Restore access" button.
+| Layer | Technology |
+|---|---|
+| Monorepo | pnpm workspaces, Node.js 24, TypeScript ~5.9 |
+| API server | Express 5, raw WebSocket (`ws`) for real-time messaging/calls |
+| Database | PostgreSQL + Drizzle ORM |
+| Validation | Zod v4 (`zod/v4`), `drizzle-zod` |
+| API contract | OpenAPI spec, with Zod schemas and React Query hooks generated via **Orval** |
+| Frontend | React 19, Vite 7, Tailwind CSS v4, shadcn/ui, wouter (routing), TanStack Query |
+| Auth | Clerk |
+| Encryption | Client-side RSA-OAEP + AES-GCM, wrap-per-member key sharing |
+| Build | esbuild (API server), Vite (frontend) |
+| Hosting | Replit |
 
-**New: request-key-access endpoint (backend + WS)**
-- `POST /groups/{groupId}/keys/request` and `POST /dms/{threadId}/keys/request`
-  — the affected user's client calls this (via the pill or the banner
-  button). It broadcasts a `group-key-requested` / `dm-key-requested` event
-  over the existing group/thread WebSocket channel.
-- Any other member/participant currently connected to that same
-  conversation, who already holds the decrypted key, responds automatically
-  by re-wrapping and re-sharing it for the requester — same re-share
-  function already used elsewhere, just triggered on-demand instead of only
-  "whenever they next happen to open this chat."
-- Rate-limited (5/min per user) since it's a WS broadcast, not free.
+---
 
-## What this does and doesn't fix
+## Repository structure
 
-**Fixes:** the specific case in the screenshot — stuck forever with no
-explanation, and a slow/unreliable recovery path. Now there's a clear
-message, an honest status, and an on-demand nudge that resolves things in
-seconds if the other person is currently in that conversation (which, for an
-active family chat, is often true).
+```
+lib/
+  db/                        Drizzle schema (source of truth for all tables)
+  api-spec/openapi.yaml      OpenAPI spec (source of truth for the HTTP API)
+  api-zod/generated/         Zod request/response schemas — generated, don't hand-edit
+  api-client-react/generated/ React Query hooks — generated, don't hand-edit
+  api-spec/orval.config.ts   Codegen configuration
 
-**Doesn't fix:** if the other participant *never* opens that conversation
-after your key changes, you're still stuck — the request only reaches
-someone who's connected to that specific group/thread channel right now,
-not "anywhere in the app." A fully general fix (reaching someone regardless
-of what page they're on) would need a new always-on per-user WebSocket
-channel, which is a bigger infrastructure change I didn't make here — happy
-to scope that separately if this still isn't enough in practice.
+artifacts/
+  api-server/                Express app
+    src/routes/               One file per resource (users, groups, dms, messages, activity)
+    src/lib/                  Access-control helpers (dmAccess.ts, groupAccess.ts), serialization
+    src/ws/                   WebSocket hub (per-group and per-thread connection rooms)
+    src/middlewares/          Auth, rate limiting
+  mavik-connect/              React frontend
+    src/pages/                 Route-level components (ChatRoom, DmThread, Settings, Landing, ...)
+    src/components/            Shared components (ChatListSidebar, ui/ — shadcn primitives)
+    src/hooks/                  use-encryption.ts (crypto orchestration), use-websocket.ts
+    src/lib/crypto.ts           Low-level WebCrypto helpers (keygen, wrap/unwrap, encrypt/decrypt)
+  mockup-sandbox/             Unrelated Replit-only sandbox package
 
-**Also out of scope, worth knowing about:** the actual root fix — not
-losing the private key at all — would mean backing it up somewhere more
-durable than localStorage (e.g. a passphrase-protected export, or
-server-side backup encrypted with something only the user knows). That's a
-real security-model change, not a quick patch, so I didn't make that call
-unilaterally. Worth a conversation if this keeps coming up.
+.agents/memory/               Design-decision notes worth reading before making changes
+  mavik-connect-e2e-encryption.md   The encryption architecture and its accepted tradeoffs
+```
+
+---
+
+## Getting started
+
+### Prerequisites
+- Node.js 24
+- pnpm (`npm install -g pnpm`)
+- A PostgreSQL database
+
+### Install
+
+```bash
+pnpm install
+```
+
+### Environment
+
+Set `DATABASE_URL` to a PostgreSQL connection string. (Clerk and other service credentials are configured via Replit's environment in the hosted deployment — see your Replit project's secrets if running there.)
+
+### Push the database schema
+
+This repo uses `drizzle-kit push` — there are **no migration files**. Schema changes in `lib/db/src/schema/*.ts` are applied directly:
+
+```bash
+pnpm --filter @workspace/db run push
+```
+
+### Run the API server
+
+```bash
+pnpm --filter @workspace/api-server run dev
+```
+
+Runs on port 5000 by default.
+
+### Run the frontend
+
+```bash
+PORT=5173 pnpm --filter mavik-connect run dev
+```
+
+(The frontend's `vite.config.ts` requires a `PORT` env var to be set explicitly.)
+
+---
+
+## Common commands
+
+| Command | What it does |
+|---|---|
+| `pnpm run typecheck` | Full typecheck across every workspace package |
+| `pnpm run build` | Typecheck + build every package |
+| `pnpm run lint` / `pnpm run format` | Prettier check / write across the repo |
+| `pnpm --filter @workspace/api-spec run codegen` | Regenerate Zod schemas + React Query hooks from `openapi.yaml` |
+| `pnpm --filter @workspace/db run push` | Push schema changes to the database |
+
+---
+
+## How a change flows through this repo
+
+This is a codegen-driven monorepo — changes to the API generally flow in one direction:
+
+1. **`lib/db/src/schema/*.ts`** — add/change a table or column.
+2. **`lib/api-spec/openapi.yaml`** — add/change the corresponding request/response shape.
+3. **`pnpm --filter @workspace/api-spec run codegen`** — regenerates:
+   - `lib/api-zod/generated/` — Zod schemas the API server validates against
+   - `lib/api-client-react/generated/` — React Query hooks the frontend calls
+4. **`artifacts/api-server/src/routes/*.ts`** — implement the backend logic, using the generated Zod schemas.
+5. **`artifacts/mavik-connect/src/**`** — implement the frontend, using the generated hooks.
+6. **`pnpm run typecheck`** — should be clean across all 9 workspace projects before considering anything done.
+
+Files under any `generated/` directory are committed to this repo (not gitignored) — regenerate and commit them together with the `openapi.yaml` change that produced them, rather than hand-editing them or leaving them stale.
+
+---
+
+## Encryption model, in brief
+
+- Each user has an RSA-OAEP keypair. The private key lives only in that browser's `localStorage`, keyed per user id, and is **never** uploaded — only the public key is sent to the server.
+- Each group/DM thread has one AES-GCM key, generated client-side and wrapped (RSA-encrypted) once per member/participant with that person's public key. The server stores only wrapped copies.
+- If a user loses their browser's `localStorage` (clears data, switches devices, uses a private/incognito window), they lose access to previously wrapped keys and thus old messages — this is an accepted tradeoff of true end-to-end encryption, not a bug. Recovery happens by another participant who still holds the key re-sharing it, either automatically when they next open that conversation or on request via the "Restore access" flow.
+
+See `.agents/memory/mavik-connect-e2e-encryption.md` for the full design rationale before making any encryption-related change.
+
+---
+
+## Known limitations
+
+- No automated test suite yet — verification currently relies on `pnpm run typecheck` and a production build.
+- Key recovery for a user who's lost local storage depends on another participant being reachable (either live via WebSocket, or by them reopening the conversation); there's no durable, always-on per-user notification channel yet.
+- Phone numbers are format-validated only (E.164), not SMS-verified.
+- The `mockup-sandbox` package requires Replit-specific environment variables and won't build in a plain local/CI environment — this is expected and unrelated to the rest of the app.
