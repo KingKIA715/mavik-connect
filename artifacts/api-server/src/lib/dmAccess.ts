@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { db, dmThreadsTable } from "@workspace/db";
 
 /**
@@ -99,6 +99,71 @@ export function myPinnedAt(
   return thread.userAId === userId
     ? thread.userAPinnedAt
     : thread.userBPinnedAt;
+}
+
+/**
+ * Caps how many *new* message requests (threads this user has initiated
+ * that are still sitting "pending", unanswered) one user can have open at
+ * once. Guards against someone cold-messaging a large number of strangers
+ * to spam them — it does NOT limit messages within an existing
+ * conversation (see messageSendRateLimit for that), and it never blocks
+ * re-fetching/reopening a thread that already exists for a given pair.
+ */
+export const MAX_PENDING_OUTBOUND_REQUESTS = 25;
+
+/** Whether a dm_threads row already exists for this (unordered) pair. */
+export async function threadExistsBetween(
+  userId: string,
+  otherUserId: string,
+): Promise<boolean> {
+  const [userAId, userBId] = [userId, otherUserId].sort();
+  const [existing] = await db
+    .select({ id: dmThreadsTable.id })
+    .from(dmThreadsTable)
+    .where(
+      and(
+        eq(dmThreadsTable.userAId, userAId),
+        eq(dmThreadsTable.userBId, userBId),
+      ),
+    );
+  return !!existing;
+}
+
+/** How many threads `userId` has initiated that are still status "pending". */
+export async function countPendingOutboundRequests(
+  userId: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ count: count() })
+    .from(dmThreadsTable)
+    .where(
+      and(
+        eq(dmThreadsTable.initiatorId, userId),
+        eq(dmThreadsTable.status, "pending"),
+      ),
+    );
+  return row?.count ?? 0;
+}
+
+/** Which dm_threads column to update when `userId` mutes/unmutes a thread. */
+export function myMutedColumn(
+  thread: { userAId: string; userBId: string },
+  userId: string,
+): "userAMutedAt" | "userBMutedAt" {
+  return thread.userAId === userId ? "userAMutedAt" : "userBMutedAt";
+}
+
+/** "Mine" muted-at timestamp, same left/right picking as getReadTimestamps. */
+export function myMutedAt(
+  thread: {
+    userAId: string;
+    userBId: string;
+    userAMutedAt: Date | null;
+    userBMutedAt: Date | null;
+  },
+  userId: string,
+): Date | null {
+  return thread.userAId === userId ? thread.userAMutedAt : thread.userBMutedAt;
 }
 
 /**

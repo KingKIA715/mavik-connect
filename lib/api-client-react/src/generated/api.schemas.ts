@@ -22,9 +22,9 @@ export interface SetGroupAvatarInput {
 
 export interface ToggleReactionInput {
   /**
-     * @minLength 1
-     * @maxLength 8
-     */
+   * @minLength 1
+   * @maxLength 8
+   */
   emoji: string;
 }
 
@@ -42,9 +42,9 @@ export interface UserProfile {
   /** @nullable */
   lastName?: string | null;
   /**
-     * E.164 format (e.g. +14155551234). Format-validated only — not verified to belong to the user.
-     * @nullable
-     */
+   * E.164 format (e.g. +14155551234). Format-validated only — not verified to belong to the user.
+   * @nullable
+   */
   phoneNumber?: string | null;
   /** @nullable */
   avatarUrl?: string | null;
@@ -64,10 +64,10 @@ export interface UpdateMyProfileInput {
   /** @minLength 1 */
   lastName: string;
   /**
-     * E.164 format (e.g. +14155551234), or null to clear it. Format-validated server-side; not verified to belong to the user.
-     * @nullable
-     * @pattern ^\+[1-9]\d{6,14}$
-     */
+   * E.164 format (e.g. +14155551234), or null to clear it. Format-validated server-side; not verified to belong to the user.
+   * @nullable
+   * @pattern ^\+[1-9]\d{6,14}$
+   */
   phoneNumber?: string | null;
 }
 
@@ -89,6 +89,8 @@ export interface Group {
   unreadCount: number;
   /** Whether the current user has pinned this group to the top of their own chat list. Purely personal — pinning is per-member, not a group-wide setting. */
   isPinned: boolean;
+  /** Whether the current user has muted notifications for this group. Purely personal, like isPinned — never affects sending or receiving messages. */
+  isMuted: boolean;
 }
 
 export interface GroupInput {
@@ -104,6 +106,14 @@ export interface PinnedResult {
   isPinned: boolean;
 }
 
+export interface SetMutedInput {
+  muted: boolean;
+}
+
+export interface MutedResult {
+  isMuted: boolean;
+}
+
 export interface GroupMember {
   userId: string;
   name: string;
@@ -116,9 +126,9 @@ export interface GroupMember {
   role: string;
   joinedAt: string;
   /**
-     * Last time this member marked the group as read. Used by other members to compute a "Seen" receipt on their own last message.
-     * @nullable
-     */
+   * Last time this member marked the group as read. Used by other members to compute a "Seen" receipt on their own last message.
+   * @nullable
+   */
   lastReadAt: string | null;
 }
 
@@ -145,6 +155,8 @@ export interface GroupDetail {
   createdAt: string;
   /** @nullable */
   avatarUrl?: string | null;
+  /** Whether the current user has muted notifications for this group. Purely personal — never affects sending or receiving messages. */
+  isMuted: boolean;
   members: GroupMember[];
 }
 
@@ -153,13 +165,13 @@ export interface MessageReaction {
   userIds: string[];
 }
 
-export type MessageReplyPreviewType = typeof MessageReplyPreviewType[keyof typeof MessageReplyPreviewType];
-
+export type MessageReplyPreviewType =
+  (typeof MessageReplyPreviewType)[keyof typeof MessageReplyPreviewType];
 
 export const MessageReplyPreviewType = {
-  text: 'text',
-  file: 'file',
-  voice: 'voice',
+  text: "text",
+  file: "file",
+  voice: "voice",
 } as const;
 
 /**
@@ -174,20 +186,19 @@ export interface MessageReplyPreview {
   /** @nullable */
   fileName?: string | null;
   /**
-     * If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.
-     * @nullable
-     */
+   * If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.
+   * @nullable
+   */
   deletedAt: string | null;
 }
 
-export type MessageType = typeof MessageType[keyof typeof MessageType];
-
+export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
 export const MessageType = {
-  text: 'text',
-  file: 'file',
-  voice: 'voice',
-  system: 'system',
+  text: "text",
+  file: "file",
+  voice: "voice",
+  system: "system",
 } as const;
 
 export interface Message {
@@ -206,9 +217,9 @@ export interface Message {
   /** @nullable */
   fileSize?: number | null;
   /**
-     * Playback duration in seconds, for voice messages.
-     * @nullable
-     */
+   * Playback duration in seconds, for voice messages.
+   * @nullable
+   */
   durationSeconds?: number | null;
   /** @nullable */
   replyToId?: string | null;
@@ -223,13 +234,13 @@ export interface Message {
   reactions: MessageReaction[];
 }
 
-export type MessageInputType = typeof MessageInputType[keyof typeof MessageInputType];
-
+export type MessageInputType =
+  (typeof MessageInputType)[keyof typeof MessageInputType];
 
 export const MessageInputType = {
-  text: 'text',
-  file: 'file',
-  voice: 'voice',
+  text: "text",
+  file: "file",
+  voice: "voice",
 } as const;
 
 export interface MessageInput {
@@ -284,13 +295,13 @@ export interface DmThreadInput {
 /**
  * Message-request status. "pending": only the initiator can send, until the other side accepts/rejects via PUT /dms/{threadId}/respond. "accepted": both sides can send freely. "rejected": a one-directional permanent block on the initiator only — see canSendDm in the API server.
  */
-export type DmThreadStatus = typeof DmThreadStatus[keyof typeof DmThreadStatus];
-
+export type DmThreadStatus =
+  (typeof DmThreadStatus)[keyof typeof DmThreadStatus];
 
 export const DmThreadStatus = {
-  pending: 'pending',
-  accepted: 'accepted',
-  rejected: 'rejected',
+  pending: "pending",
+  accepted: "accepted",
+  rejected: "rejected",
 } as const;
 
 export interface DmThread {
@@ -311,9 +322,9 @@ export interface DmThread {
   /** @nullable */
   myLastReadAt?: string | null;
   /**
-     * Used by the current user to compute a "Seen" receipt on their own last message in this thread.
-     * @nullable
-     */
+   * Used by the current user to compute a "Seen" receipt on their own last message in this thread.
+   * @nullable
+   */
   otherUserLastReadAt?: string | null;
   /** Messages from the other participant created after myLastReadAt. */
   unreadCount: number;
@@ -323,39 +334,40 @@ export interface DmThread {
   isInitiatedByMe: boolean;
   /** Whether the current user has pinned this thread to the top of their own chat list. Per-side, like the read receipts — the other participant pinning it doesn't affect your view. */
   isPinned: boolean;
+  /** Whether the current user has muted notifications for this thread. Per-side, like isPinned — never affects sending or receiving messages. */
+  isMuted: boolean;
 }
 
-export type RespondToDmThreadInputAction = typeof RespondToDmThreadInputAction[keyof typeof RespondToDmThreadInputAction];
-
+export type RespondToDmThreadInputAction =
+  (typeof RespondToDmThreadInputAction)[keyof typeof RespondToDmThreadInputAction];
 
 export const RespondToDmThreadInputAction = {
-  accept: 'accept',
-  reject: 'reject',
+  accept: "accept",
+  reject: "reject",
 } as const;
 
 export interface RespondToDmThreadInput {
   action: RespondToDmThreadInputAction;
 }
 
-export type RespondToDmThreadResultStatus = typeof RespondToDmThreadResultStatus[keyof typeof RespondToDmThreadResultStatus];
-
+export type RespondToDmThreadResultStatus =
+  (typeof RespondToDmThreadResultStatus)[keyof typeof RespondToDmThreadResultStatus];
 
 export const RespondToDmThreadResultStatus = {
-  accepted: 'accepted',
-  rejected: 'rejected',
+  accepted: "accepted",
+  rejected: "rejected",
 } as const;
 
 export interface RespondToDmThreadResult {
   status: RespondToDmThreadResultStatus;
 }
 
-export type DmMessageType = typeof DmMessageType[keyof typeof DmMessageType];
-
+export type DmMessageType = (typeof DmMessageType)[keyof typeof DmMessageType];
 
 export const DmMessageType = {
-  text: 'text',
-  file: 'file',
-  voice: 'voice',
+  text: "text",
+  file: "file",
+  voice: "voice",
 } as const;
 
 export interface DmMessage {
@@ -374,9 +386,9 @@ export interface DmMessage {
   /** @nullable */
   fileSize?: number | null;
   /**
-     * Playback duration in seconds, for voice messages.
-     * @nullable
-     */
+   * Playback duration in seconds, for voice messages.
+   * @nullable
+   */
   durationSeconds?: number | null;
   /** @nullable */
   replyToId?: string | null;
@@ -389,13 +401,13 @@ export interface DmMessage {
   reactions: MessageReaction[];
 }
 
-export type DmMessageInputType = typeof DmMessageInputType[keyof typeof DmMessageInputType];
-
+export type DmMessageInputType =
+  (typeof DmMessageInputType)[keyof typeof DmMessageInputType];
 
 export const DmMessageInputType = {
-  text: 'text',
-  file: 'file',
-  voice: 'voice',
+  text: "text",
+  file: "file",
+  voice: "voice",
 } as const;
 
 export interface DmMessageInput {
@@ -432,49 +444,48 @@ export interface DmKeyInput {
 }
 
 export type SearchUserByEmailParams = {
-email: string;
+  email: string;
 };
 
 export type SearchUsersByNameParams = {
-/**
- * @minLength 1
- */
-name: string;
+  /**
+   * @minLength 1
+   */
+  name: string;
 };
 
 export type ListMessagesParams = {
-/**
- * @minimum 1
- * @maximum 100
- */
-limit?: number;
-/**
- * @minimum 0
- */
-offset?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   */
+  offset?: number;
 };
 
 export type ListDmMessagesParams = {
-/**
- * @minimum 1
- * @maximum 100
- */
-limit?: number;
-/**
- * @minimum 0
- */
-offset?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   */
+  offset?: number;
 };
 
 export type GetRecentActivityParams = {
-/**
- * @minimum 1
- * @maximum 100
- */
-limit?: number;
-/**
- * @minimum 0
- */
-offset?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   */
+  offset?: number;
 };
-

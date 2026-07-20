@@ -25,6 +25,8 @@ import {
   MarkDmThreadReadResponse,
   SetDmThreadPinnedBody,
   SetDmThreadPinnedResponse,
+  SetDmThreadMutedBody,
+  SetDmThreadMutedResponse,
   RespondToDmThreadBody,
   RespondToDmThreadResponse,
   ToggleDmMessageReactionBody,
@@ -39,10 +41,15 @@ import {
   parseThreadId,
   isThreadParticipant,
   findOrCreateThread,
+  threadExistsBetween,
+  countPendingOutboundRequests,
+  MAX_PENDING_OUTBOUND_REQUESTS,
   getReadTimestamps,
   myLastReadColumn,
   myPinnedColumn,
   myPinnedAt,
+  myMutedColumn,
+  myMutedAt,
   canSendDm,
 } from "../lib/dmAccess";
 import { broadcastToThread, sendToUserInThread } from "../ws/hub";
@@ -278,6 +285,7 @@ router.get("/dms", async (req, res): Promise<void> => {
       status: thread.status,
       isInitiatedByMe: thread.initiatorId === userId,
       isPinned: !!myPinnedAt(thread, userId),
+      isMuted: !!myMutedAt(thread, userId),
     };
   });
 
@@ -305,6 +313,19 @@ router.post("/dms", async (req, res): Promise<void> => {
   if (otherUser.id === userId) {
     res.status(400).json({ error: "Cannot start a DM thread with yourself" });
     return;
+  }
+
+  // Only cap *new* message requests — reopening/re-fetching a thread that
+  // already exists (any status) is never blocked here.
+  if (!(await threadExistsBetween(userId, otherUser.id))) {
+    const pendingCount = await countPendingOutboundRequests(userId);
+    if (pendingCount >= MAX_PENDING_OUTBOUND_REQUESTS) {
+      res.status(429).json({
+        error:
+          "You have too many pending message requests waiting on a response. Try again once some have been accepted or declined.",
+      });
+      return;
+    }
   }
 
   const thread = await findOrCreateThread(userId, otherUser.id);
@@ -349,6 +370,7 @@ router.post("/dms", async (req, res): Promise<void> => {
       status: thread.status,
       isInitiatedByMe: thread.initiatorId === userId,
       isPinned: !!myPinnedAt(thread, userId),
+      isMuted: !!myMutedAt(thread, userId),
     }),
   );
 });
@@ -433,6 +455,7 @@ router.get("/dms/:threadId", async (req, res): Promise<void> => {
       status: thread.status,
       isInitiatedByMe: thread.initiatorId === userId,
       isPinned: !!myPinnedAt(thread, userId),
+      isMuted: !!myMutedAt(thread, userId),
     }),
   );
 });
@@ -527,6 +550,40 @@ router.put("/dms/:threadId/pin", async (req, res): Promise<void> => {
     .where(eq(dmThreadsTable.id, threadId));
 
   res.json(SetDmThreadPinnedResponse.parse({ isPinned: parsed.data.pinned }));
+});
+
+router.put("/dms/:threadId/mute", async (req, res): Promise<void> => {
+  const threadId = parseThreadId(req.params.threadId);
+  if (threadId === null) {
+    res.status(404).json({ error: "Thread not found" });
+    return;
+  }
+
+  const parsed = SetDmThreadMutedBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const userId = req.userId!;
+  const [thread] = await db
+    .select()
+    .from(dmThreadsTable)
+    .where(eq(dmThreadsTable.id, threadId));
+  if (!thread || (thread.userAId !== userId && thread.userBId !== userId)) {
+    res.status(404).json({ error: "Thread not found" });
+    return;
+  }
+
+  // Purely personal, like pinning — only ever touches "my" muted column,
+  // never broadcast to the other participant.
+  const column = myMutedColumn(thread, userId);
+  await db
+    .update(dmThreadsTable)
+    .set({ [column]: parsed.data.muted ? new Date() : null })
+    .where(eq(dmThreadsTable.id, threadId));
+
+  res.json(SetDmThreadMutedResponse.parse({ isMuted: parsed.data.muted }));
 });
 
 router.put("/dms/:threadId/respond", async (req, res): Promise<void> => {

@@ -22,6 +22,8 @@ import {
   MarkGroupReadResponse,
   SetGroupPinnedBody,
   SetGroupPinnedResponse,
+  SetGroupMutedBody,
+  SetGroupMutedResponse,
   SetGroupAvatarBody,
   SetGroupAvatarResponse,
   ToggleMessageReactionBody,
@@ -97,6 +99,7 @@ router.get("/groups", async (req, res): Promise<void> => {
       groupId: groupMembersTable.groupId,
       lastReadAt: groupMembersTable.lastReadAt,
       pinnedAt: groupMembersTable.pinnedAt,
+      mutedAt: groupMembersTable.mutedAt,
     })
     .from(groupMembersTable)
     .where(
@@ -110,6 +113,9 @@ router.get("/groups", async (req, res): Promise<void> => {
   );
   const myPinnedByGroup = new Map(
     myMemberships.map((m) => [m.groupId, m.pinnedAt]),
+  );
+  const myMutedByGroup = new Map(
+    myMemberships.map((m) => [m.groupId, m.mutedAt]),
   );
 
   // Unread badge count per group: messages from anyone else, created after
@@ -151,6 +157,7 @@ router.get("/groups", async (req, res): Promise<void> => {
       myLastReadAt: toIsoOrNull(myLastReadByGroup.get(group.id)),
       unreadCount: unreadCountByGroup.get(group.id) ?? 0,
       isPinned: !!myPinnedByGroup.get(group.id),
+      isMuted: !!myMutedByGroup.get(group.id),
     };
   });
 
@@ -192,6 +199,7 @@ router.post("/groups", async (req, res): Promise<void> => {
       myLastReadAt: null,
       unreadCount: 0,
       isPinned: false,
+      isMuted: false,
     }),
   );
 });
@@ -240,6 +248,16 @@ router.get("/groups/:groupId", async (req, res): Promise<void> => {
     .where(eq(groupKeysTable.groupId, groupId));
   const keyHolderSet = new Set(keyHolders.map((k) => k.userId));
 
+  const [myMembership] = await db
+    .select({ mutedAt: groupMembersTable.mutedAt })
+    .from(groupMembersTable)
+    .where(
+      and(
+        eq(groupMembersTable.groupId, groupId),
+        eq(groupMembersTable.userId, userId),
+      ),
+    );
+
   res.json(
     GetGroupResponse.parse({
       id: String(group.id),
@@ -247,6 +265,7 @@ router.get("/groups/:groupId", async (req, res): Promise<void> => {
       createdBy: group.createdBy,
       createdAt: toIso(group.createdAt),
       avatarUrl: group.avatarUrl,
+      isMuted: !!myMembership?.mutedAt,
       members: members.map((m) => ({
         ...m,
         joinedAt: toIso(m.joinedAt),
@@ -500,6 +519,41 @@ router.put("/groups/:groupId/pin", async (req, res): Promise<void> => {
     );
 
   res.json(SetGroupPinnedResponse.parse({ isPinned: parsed.data.pinned }));
+});
+
+router.put("/groups/:groupId/mute", async (req, res): Promise<void> => {
+  const groupId = parseGroupId(req.params.groupId);
+  if (groupId === null) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const parsed = SetGroupMutedBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const userId = req.userId!;
+  const member = await isGroupMember(groupId, userId);
+  if (!member) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  // Purely personal — only ever touches the caller's own membership row,
+  // never broadcast to anyone else.
+  await db
+    .update(groupMembersTable)
+    .set({ mutedAt: parsed.data.muted ? new Date() : null })
+    .where(
+      and(
+        eq(groupMembersTable.groupId, groupId),
+        eq(groupMembersTable.userId, userId),
+      ),
+    );
+
+  res.json(SetGroupMutedResponse.parse({ isMuted: parsed.data.muted }));
 });
 
 router.post("/groups/:groupId/keys", async (req, res): Promise<void> => {

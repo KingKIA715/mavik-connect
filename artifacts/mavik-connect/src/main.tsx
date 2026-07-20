@@ -1,7 +1,10 @@
 import { Component, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { applyStoredTheme } from "./hooks/use-theme";
 import "./index.css";
+
+applyStoredTheme();
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -31,7 +34,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       return (
         <div className="min-h-screen flex items-center justify-center bg-background p-6">
           <div className="max-w-md text-center space-y-4">
-            <h1 className="text-2xl font-bold text-foreground">Something went wrong</h1>
+            <h1 className="text-2xl font-bold text-foreground">
+              Something went wrong
+            </h1>
             <p className="text-muted-foreground">
               {this.state.error?.message || "An unexpected error occurred."}
             </p>
@@ -63,7 +68,11 @@ root.render(
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
-      .register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL })
-      .catch((err) => console.error("Service worker registration failed:", err));
+      .register(`${import.meta.env.BASE_URL}sw.js`, {
+        scope: import.meta.env.BASE_URL,
+      })
+      .catch((err) =>
+        console.error("Service worker registration failed:", err),
+      );
   });
 }

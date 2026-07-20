@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.2.0
  */
-import type { DmThreadStatus } from './dmThreadStatus';
+import type { DmThreadStatus } from "./dmThreadStatus";
 
 export interface DmThread {
   id: string;
@@ -25,9 +25,9 @@ export interface DmThread {
   /** @nullable */
   myLastReadAt?: string | null;
   /**
-     * Used by the current user to compute a "Seen" receipt on their own last message in this thread.
-     * @nullable
-     */
+   * Used by the current user to compute a "Seen" receipt on their own last message in this thread.
+   * @nullable
+   */
   otherUserLastReadAt?: string | null;
   /** Messages from the other participant created after myLastReadAt. */
   unreadCount: number;
@@ -37,4 +37,6 @@ export interface DmThread {
   isInitiatedByMe: boolean;
   /** Whether the current user has pinned this thread to the top of their own chat list. Per-side, like the read receipts — the other participant pinning it doesn't affect your view. */
   isPinned: boolean;
+  /** Whether the current user has muted notifications for this thread. Per-side, like isPinned — never affects sending or receiving messages. */
+  isMuted: boolean;
 }

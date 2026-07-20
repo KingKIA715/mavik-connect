@@ -445,6 +445,37 @@ paths:
         "404":
           description: Not found
 
+  /groups/{groupId}/mute:
+    put:
+      operationId: setGroupMuted
+      tags: [groups]
+      summary: Mute or unmute a group for the current user
+      description: >
+        Purely personal — silences notifications for this group for the
+        caller only. Never affects the caller's ability to send or receive
+        messages, or any other member's settings.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetMutedInput"
+      responses:
+        "200":
+          description: Updated mute state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MutedResult"
+        "404":
+          description: Not found
+
   /groups/{groupId}/members/{userId}:
     delete:
       operationId: removeGroupMember
@@ -856,6 +887,37 @@ paths:
         "404":
           description: Not found
 
+  /dms/{threadId}/mute:
+    put:
+      operationId: setDmThreadMuted
+      tags: [dms]
+      summary: Mute or unmute a DM thread for the current user
+      description: >
+        Purely personal, like pinning — silences notifications for this
+        thread for the caller only, and never affects the caller's ability
+        to send or receive messages, or the other participant's settings.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetMutedInput"
+      responses:
+        "200":
+          description: Updated mute state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MutedResult"
+        "404":
+          description: Not found
+
   /dms/{threadId}/respond:
     put:
       operationId: respondToDmThread
@@ -1196,7 +1258,16 @@ components:
     Group:
       type: object
       required:
-        [id, name, createdBy, createdAt, memberCount, unreadCount, isPinned]
+        [
+          id,
+          name,
+          createdBy,
+          createdAt,
+          memberCount,
+          unreadCount,
+          isPinned,
+          isMuted,
+        ]
       properties:
         id:
           type: string
@@ -1225,6 +1296,12 @@ components:
             Whether the current user has pinned this group to the top of
             their own chat list. Purely personal — pinning is per-member,
             not a group-wide setting.
+        isMuted:
+          type: boolean
+          description: >
+            Whether the current user has muted notifications for this
+            group. Purely personal, like isPinned — never affects sending
+            or receiving messages.
 
     GroupInput:
       type: object
@@ -1246,6 +1323,20 @@ components:
       required: [isPinned]
       properties:
         isPinned:
+          type: boolean
+
+    SetMutedInput:
+      type: object
+      required: [muted]
+      properties:
+        muted:
+          type: boolean
+
+    MutedResult:
+      type: object
+      required: [isMuted]
+      properties:
+        isMuted:
           type: boolean
 
     GroupMember:
@@ -1303,7 +1394,7 @@ components:
 
     GroupDetail:
       type: object
-      required: [id, name, createdBy, createdAt, members]
+      required: [id, name, createdBy, createdAt, members, isMuted]
       properties:
         id:
           type: string
@@ -1315,6 +1406,12 @@ components:
           type: string
         avatarUrl:
           type: ["string", "null"]
+        isMuted:
+          type: boolean
+          description: >
+            Whether the current user has muted notifications for this
+            group. Purely personal — never affects sending or receiving
+            messages.
         members:
           type: array
           items:
@@ -1511,6 +1608,7 @@ components:
           status,
           isInitiatedByMe,
           isPinned,
+          isMuted,
         ]
       properties:
         id:
@@ -1561,6 +1659,12 @@ components:
             Whether the current user has pinned this thread to the top of
             their own chat list. Per-side, like the read receipts — the
             other participant pinning it doesn't affect your view.
+        isMuted:
+          type: boolean
+          description: >
+            Whether the current user has muted notifications for this
+            thread. Per-side, like isPinned — never affects sending or
+            receiving messages.
 
     RespondToDmThreadInput:
       type: object

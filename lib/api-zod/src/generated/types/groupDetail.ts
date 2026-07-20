@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.2.0
  */
-import type { GroupMember } from './groupMember';
+import type { GroupMember } from "./groupMember";
 
 export interface GroupDetail {
   id: string;
@@ -14,5 +14,7 @@ export interface GroupDetail {
   createdAt: string;
   /** @nullable */
   avatarUrl?: string | null;
+  /** Whether the current user has muted notifications for this group. Purely personal — never affects sending or receiving messages. */
+  isMuted: boolean;
   members: GroupMember[];
 }

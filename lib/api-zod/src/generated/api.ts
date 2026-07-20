@@ -5,359 +5,420 @@
  * API specification
  * OpenAPI spec version: 0.2.0
  */
-import * as zod from 'zod';
-
+import * as zod from "zod";
 
 /**
  * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
-  "status": zod.string()
-})
-
+  status: zod.string(),
+});
 
 /**
  * Returns (and JIT-provisions) the signed-in user's profile
  * @summary Get current user's profile
  */
 export const GetMyProfileResponse = zod.object({
-  "id": zod.string(),
-  "email": zod.string(),
-  "name": zod.string().describe('Derived display name, recomputed server-side from firstName\/lastName on every profile update.\n'),
-  "firstName": zod.string().nullish(),
-  "lastName": zod.string().nullish(),
-  "phoneNumber": zod.string().nullish().describe('E.164 format (e.g. +14155551234). Format-validated only — not verified to belong to the user.\n'),
-  "avatarUrl": zod.string().nullish(),
-  "publicKey": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-
+  id: zod.string(),
+  email: zod.string(),
+  name: zod
+    .string()
+    .describe(
+      "Derived display name, recomputed server-side from firstName\/lastName on every profile update.\n",
+    ),
+  firstName: zod.string().nullish(),
+  lastName: zod.string().nullish(),
+  phoneNumber: zod
+    .string()
+    .nullish()
+    .describe(
+      "E.164 format (e.g. +14155551234). Format-validated only — not verified to belong to the user.\n",
+    ),
+  avatarUrl: zod.string().nullish(),
+  publicKey: zod.string().nullish(),
+  createdAt: zod.string(),
+});
 
 /**
  * Updates firstName, lastName, and phoneNumber as plain profile fields directly on this app's own users table — no Clerk call, no SMS/OTP verification. The server recomputes the derived `name` field from firstName/lastName and returns it in the response.
  * @summary Update the current user's profile fields
  */
 
-
-export const updateMyProfileBodyPhoneNumberRegExp = new RegExp('^\\+[1-9]\\d{6,14}$');
-
+export const updateMyProfileBodyPhoneNumberRegExp = new RegExp(
+  "^\\+[1-9]\\d{6,14}$",
+);
 
 export const UpdateMyProfileBody = zod.object({
-  "firstName": zod.string().min(1),
-  "lastName": zod.string().min(1),
-  "phoneNumber": zod.string().regex(updateMyProfileBodyPhoneNumberRegExp).nullish().describe('E.164 format (e.g. +14155551234), or null to clear it. Format-validated server-side; not verified to belong to the user.\n')
-})
+  firstName: zod.string().min(1),
+  lastName: zod.string().min(1),
+  phoneNumber: zod
+    .string()
+    .regex(updateMyProfileBodyPhoneNumberRegExp)
+    .nullish()
+    .describe(
+      "E.164 format (e.g. +14155551234), or null to clear it. Format-validated server-side; not verified to belong to the user.\n",
+    ),
+});
 
 export const UpdateMyProfileResponse = zod.object({
-  "id": zod.string(),
-  "email": zod.string(),
-  "name": zod.string().describe('Derived display name, recomputed server-side from firstName\/lastName on every profile update.\n'),
-  "firstName": zod.string().nullish(),
-  "lastName": zod.string().nullish(),
-  "phoneNumber": zod.string().nullish().describe('E.164 format (e.g. +14155551234). Format-validated only — not verified to belong to the user.\n'),
-  "avatarUrl": zod.string().nullish(),
-  "publicKey": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-
+  id: zod.string(),
+  email: zod.string(),
+  name: zod
+    .string()
+    .describe(
+      "Derived display name, recomputed server-side from firstName\/lastName on every profile update.\n",
+    ),
+  firstName: zod.string().nullish(),
+  lastName: zod.string().nullish(),
+  phoneNumber: zod
+    .string()
+    .nullish()
+    .describe(
+      "E.164 format (e.g. +14155551234). Format-validated only — not verified to belong to the user.\n",
+    ),
+  avatarUrl: zod.string().nullish(),
+  publicKey: zod.string().nullish(),
+  createdAt: zod.string(),
+});
 
 /**
  * Uploads the client-generated RSA-OAEP public key used to wrap per-group encryption keys for this user. Idempotent.
  * @summary Set the current user's end-to-end encryption public key
  */
 
-
-
 export const SetMyPublicKeyBody = zod.object({
-  "publicKey": zod.string().min(1)
-})
+  publicKey: zod.string().min(1),
+});
 
 export const SetMyPublicKeyResponse = zod.object({
-  "id": zod.string(),
-  "email": zod.string(),
-  "name": zod.string().describe('Derived display name, recomputed server-side from firstName\/lastName on every profile update.\n'),
-  "firstName": zod.string().nullish(),
-  "lastName": zod.string().nullish(),
-  "phoneNumber": zod.string().nullish().describe('E.164 format (e.g. +14155551234). Format-validated only — not verified to belong to the user.\n'),
-  "avatarUrl": zod.string().nullish(),
-  "publicKey": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-
+  id: zod.string(),
+  email: zod.string(),
+  name: zod
+    .string()
+    .describe(
+      "Derived display name, recomputed server-side from firstName\/lastName on every profile update.\n",
+    ),
+  firstName: zod.string().nullish(),
+  lastName: zod.string().nullish(),
+  phoneNumber: zod
+    .string()
+    .nullish()
+    .describe(
+      "E.164 format (e.g. +14155551234). Format-validated only — not verified to belong to the user.\n",
+    ),
+  avatarUrl: zod.string().nullish(),
+  publicKey: zod.string().nullish(),
+  createdAt: zod.string(),
+});
 
 /**
  * Not a full multi-device trust/revoke system — this app only holds one active keypair per user, so there's no per-device key to individually revoke. This is a read-only timeline (most recent first) of when the key was set or rotated and a rough browser/OS guess from the User-Agent at the time, so someone can tell "that's why my other browser stopped working" rather than a security control.
  * @summary List when this user's encryption key was set or changed
  */
 export const GetKeyHistoryResponseItem = zod.object({
-  "occurredAt": zod.string(),
-  "userAgent": zod.string().nullable()
-})
-export const GetKeyHistoryResponse = zod.array(GetKeyHistoryResponseItem)
-
+  occurredAt: zod.string(),
+  userAgent: zod.string().nullable(),
+});
+export const GetKeyHistoryResponse = zod.array(GetKeyHistoryResponseItem);
 
 /**
  * Used to start a new DM thread, the same way group invites work. Returns 404 if no registered user matches the given email exactly.
  * @summary Search for a registered user by exact email match
  */
 export const SearchUserByEmailQueryParams = zod.object({
-  "email": zod.coerce.string()
-})
+  email: zod.coerce.string(),
+});
 
 export const SearchUserByEmailResponse = zod.object({
-  "id": zod.string(),
-  "email": zod.string(),
-  "name": zod.string(),
-  "firstName": zod.string().nullish(),
-  "lastName": zod.string().nullish(),
-  "avatarUrl": zod.string().nullish(),
-  "publicKey": zod.string().nullish()
-})
-
+  id: zod.string(),
+  email: zod.string(),
+  name: zod.string(),
+  firstName: zod.string().nullish(),
+  lastName: zod.string().nullish(),
+  avatarUrl: zod.string().nullish(),
+  publicKey: zod.string().nullish(),
+});
 
 /**
  * Open name search over all registered users — not limited to existing contacts or shared groups. Used to find someone to start a new DM with (see Item 2's message-request flow for what happens after a thread is created with someone new). Matches against firstName, lastName, or the combined display name. Excludes the caller. Returns an empty array (not 404) if nothing matches.
  * @summary Search registered users by name (case-insensitive, partial match)
  */
 
-
-
 export const SearchUsersByNameQueryParams = zod.object({
-  "name": zod.coerce.string().min(1)
-})
+  name: zod.coerce.string().min(1),
+});
 
 export const SearchUsersByNameResponseItem = zod.object({
-  "id": zod.string(),
-  "email": zod.string(),
-  "name": zod.string(),
-  "firstName": zod.string().nullish(),
-  "lastName": zod.string().nullish(),
-  "avatarUrl": zod.string().nullish(),
-  "publicKey": zod.string().nullish()
-})
-export const SearchUsersByNameResponse = zod.array(SearchUsersByNameResponseItem)
-
+  id: zod.string(),
+  email: zod.string(),
+  name: zod.string(),
+  firstName: zod.string().nullish(),
+  lastName: zod.string().nullish(),
+  avatarUrl: zod.string().nullish(),
+  publicKey: zod.string().nullish(),
+});
+export const SearchUsersByNameResponse = zod.array(
+  SearchUsersByNameResponseItem,
+);
 
 /**
  * @summary List groups the current user belongs to
  */
 export const ListGroupsResponseItem = zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "createdBy": zod.string(),
-  "createdAt": zod.string(),
-  "avatarUrl": zod.string().nullish(),
-  "memberCount": zod.number(),
-  "lastMessageAt": zod.string().nullish(),
-  "lastMessagePreview": zod.string().nullish(),
-  "myLastReadAt": zod.string().nullish(),
-  "unreadCount": zod.number().describe('Messages from other members created after myLastReadAt.'),
-  "isPinned": zod.boolean().describe('Whether the current user has pinned this group to the top of their own chat list. Purely personal — pinning is per-member, not a group-wide setting.\n')
-})
-export const ListGroupsResponse = zod.array(ListGroupsResponseItem)
-
+  id: zod.string(),
+  name: zod.string(),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  avatarUrl: zod.string().nullish(),
+  memberCount: zod.number(),
+  lastMessageAt: zod.string().nullish(),
+  lastMessagePreview: zod.string().nullish(),
+  myLastReadAt: zod.string().nullish(),
+  unreadCount: zod
+    .number()
+    .describe("Messages from other members created after myLastReadAt."),
+  isPinned: zod
+    .boolean()
+    .describe(
+      "Whether the current user has pinned this group to the top of their own chat list. Purely personal — pinning is per-member, not a group-wide setting.\n",
+    ),
+  isMuted: zod
+    .boolean()
+    .describe(
+      "Whether the current user has muted notifications for this group. Purely personal, like isPinned — never affects sending or receiving messages.\n",
+    ),
+});
+export const ListGroupsResponse = zod.array(ListGroupsResponseItem);
 
 /**
  * @summary Create a new group
  */
 
-
-
 export const CreateGroupBody = zod.object({
-  "name": zod.string().min(1)
-})
+  name: zod.string().min(1),
+});
 
 export const CreateGroupResponse = zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "createdBy": zod.string(),
-  "createdAt": zod.string(),
-  "avatarUrl": zod.string().nullish(),
-  "memberCount": zod.number(),
-  "lastMessageAt": zod.string().nullish(),
-  "lastMessagePreview": zod.string().nullish(),
-  "myLastReadAt": zod.string().nullish(),
-  "unreadCount": zod.number().describe('Messages from other members created after myLastReadAt.'),
-  "isPinned": zod.boolean().describe('Whether the current user has pinned this group to the top of their own chat list. Purely personal — pinning is per-member, not a group-wide setting.\n')
-})
-
+  id: zod.string(),
+  name: zod.string(),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  avatarUrl: zod.string().nullish(),
+  memberCount: zod.number(),
+  lastMessageAt: zod.string().nullish(),
+  lastMessagePreview: zod.string().nullish(),
+  myLastReadAt: zod.string().nullish(),
+  unreadCount: zod
+    .number()
+    .describe("Messages from other members created after myLastReadAt."),
+  isPinned: zod
+    .boolean()
+    .describe(
+      "Whether the current user has pinned this group to the top of their own chat list. Purely personal — pinning is per-member, not a group-wide setting.\n",
+    ),
+  isMuted: zod
+    .boolean()
+    .describe(
+      "Whether the current user has muted notifications for this group. Purely personal, like isPinned — never affects sending or receiving messages.\n",
+    ),
+});
 
 /**
  * @summary Get a group's detail including members
  */
 export const GetGroupParams = zod.object({
-  "groupId": zod.coerce.string()
-})
+  groupId: zod.coerce.string(),
+});
 
 export const GetGroupResponse = zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "createdBy": zod.string(),
-  "createdAt": zod.string(),
-  "avatarUrl": zod.string().nullish(),
-  "members": zod.array(zod.object({
-  "userId": zod.string(),
-  "name": zod.string(),
-  "email": zod.string(),
-  "avatarUrl": zod.string().nullish(),
-  "publicKey": zod.string().nullish(),
-  "hasEncryptionKey": zod.boolean(),
-  "role": zod.string(),
-  "joinedAt": zod.string(),
-  "lastReadAt": zod.string().nullable().describe('Last time this member marked the group as read. Used by other members to compute a \"Seen\" receipt on their own last message.\n')
-}))
-})
-
+  id: zod.string(),
+  name: zod.string(),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  avatarUrl: zod.string().nullish(),
+  isMuted: zod
+    .boolean()
+    .describe(
+      "Whether the current user has muted notifications for this group. Purely personal — never affects sending or receiving messages.\n",
+    ),
+  members: zod.array(
+    zod.object({
+      userId: zod.string(),
+      name: zod.string(),
+      email: zod.string(),
+      avatarUrl: zod.string().nullish(),
+      publicKey: zod.string().nullish(),
+      hasEncryptionKey: zod.boolean(),
+      role: zod.string(),
+      joinedAt: zod.string(),
+      lastReadAt: zod
+        .string()
+        .nullable()
+        .describe(
+          'Last time this member marked the group as read. Used by other members to compute a \"Seen\" receipt on their own last message.\n',
+        ),
+    }),
+  ),
+});
 
 /**
  * Only the group's creator can do this. Deletes the group and everything in it (members, messages, encryption keys) via cascading foreign keys, and notifies any currently-connected members over WebSocket so their clients can leave the chat immediately.
  * @summary Delete an entire group
  */
 export const DeleteGroupParams = zod.object({
-  "groupId": zod.coerce.string()
-})
+  groupId: zod.coerce.string(),
+});
 
-export const DeleteGroupResponse = zod.void()
-
+export const DeleteGroupResponse = zod.void();
 
 /**
  * Body is a small base64 data URI — the client resizes to a thumbnail before uploading. Not E2E-encrypted (same tradeoff as a user's profile photo). Pass null to remove the current photo. Any member may change it.
  * @summary Set or clear a group's photo
  */
 export const SetGroupAvatarParams = zod.object({
-  "groupId": zod.coerce.string()
-})
+  groupId: zod.coerce.string(),
+});
 
 export const SetGroupAvatarBody = zod.object({
-  "avatarUrl": zod.string().nullable()
-})
+  avatarUrl: zod.string().nullable(),
+});
 
 export const SetGroupAvatarResponse = zod.object({
-  "avatarUrl": zod.string().nullable()
-})
-
+  avatarUrl: zod.string().nullable(),
+});
 
 /**
  * @summary Add a member to a group by email
  */
 export const AddGroupMemberParams = zod.object({
-  "groupId": zod.coerce.string()
-})
+  groupId: zod.coerce.string(),
+});
 
 export const AddGroupMemberBody = zod.object({
-  "email": zod.string()
-})
+  email: zod.string(),
+});
 
 export const AddGroupMemberResponse = zod.object({
-  "userId": zod.string(),
-  "name": zod.string(),
-  "email": zod.string(),
-  "avatarUrl": zod.string().nullish(),
-  "publicKey": zod.string().nullish(),
-  "hasEncryptionKey": zod.boolean(),
-  "role": zod.string(),
-  "joinedAt": zod.string(),
-  "lastReadAt": zod.string().nullable().describe('Last time this member marked the group as read. Used by other members to compute a \"Seen\" receipt on their own last message.\n')
-})
-
+  userId: zod.string(),
+  name: zod.string(),
+  email: zod.string(),
+  avatarUrl: zod.string().nullish(),
+  publicKey: zod.string().nullish(),
+  hasEncryptionKey: zod.boolean(),
+  role: zod.string(),
+  joinedAt: zod.string(),
+  lastReadAt: zod
+    .string()
+    .nullable()
+    .describe(
+      'Last time this member marked the group as read. Used by other members to compute a \"Seen\" receipt on their own last message.\n',
+    ),
+});
 
 /**
  * Returns the group's symmetric encryption key, wrapped with the current user's public key. Returns wrappedKey null if it has not been shared with this user yet.
  * @summary Get the current user's wrapped end-to-end encryption key for a group
  */
 export const GetMyGroupKeyParams = zod.object({
-  "groupId": zod.coerce.string()
-})
+  groupId: zod.coerce.string(),
+});
 
 export const GetMyGroupKeyResponse = zod.object({
-  "groupId": zod.string(),
-  "wrappedKey": zod.string().nullable()
-})
-
+  groupId: zod.string(),
+  wrappedKey: zod.string().nullable(),
+});
 
 /**
  * Stores a copy of the group's symmetric key, wrapped with the target member's public key. Called by any member who already holds the decrypted group key (e.g. the creator, or when re-sharing with a newly-invited member).
  * @summary Share a wrapped copy of the group's encryption key with a member
  */
 export const SetGroupKeyParams = zod.object({
-  "groupId": zod.coerce.string()
-})
-
-
-
+  groupId: zod.coerce.string(),
+});
 
 export const SetGroupKeyBody = zod.object({
-  "userId": zod.string(),
-  "wrappedKey": zod.string().min(1)
-})
+  userId: zod.string(),
+  wrappedKey: zod.string().min(1),
+});
 
 export const SetGroupKeyResponse = zod.object({
-  "groupId": zod.string(),
-  "wrappedKey": zod.string().nullable()
-})
-
+  groupId: zod.string(),
+  wrappedKey: zod.string().nullable(),
+});
 
 /**
  * Used when this browser's copy of the group key is missing (e.g. its private key was lost when the browser's storage was cleared). Pings any other member currently connected to this group over WebSocket; if their client already holds the decrypted group key, it re-wraps and re-shares it for this user automatically. Best-effort — if no other member is currently viewing this group, nothing happens until one of them opens it (or requests again later).
  * @summary Ask other connected members to re-share the group key with me
  */
 export const RequestGroupKeyAccessParams = zod.object({
-  "groupId": zod.coerce.string()
-})
+  groupId: zod.coerce.string(),
+});
 
-export const RequestGroupKeyAccessResponse = zod.void()
-
+export const RequestGroupKeyAccessResponse = zod.void();
 
 /**
  * Sets the current user's last-read timestamp for this group to now. Powers unread badges (client compares each message's createdAt against this timestamp) and "Seen" receipts (the sender compares their last message's createdAt against every other member's last-read timestamp). Broadcasts a WS "read" event so anyone currently viewing the group updates seen-status live.
  * @summary Mark a group as read up to now, for the current user
  */
 export const MarkGroupReadParams = zod.object({
-  "groupId": zod.coerce.string()
-})
+  groupId: zod.coerce.string(),
+});
 
 export const MarkGroupReadResponse = zod.object({
-  "lastReadAt": zod.string()
-})
-
+  lastReadAt: zod.string(),
+});
 
 /**
  * Purely personal — this only affects how the group sorts in the caller's own list, not for any other member.
  * @summary Pin or unpin a group in the current user's own chat list
  */
 export const SetGroupPinnedParams = zod.object({
-  "groupId": zod.coerce.string()
-})
+  groupId: zod.coerce.string(),
+});
 
 export const SetGroupPinnedBody = zod.object({
-  "pinned": zod.boolean()
-})
+  pinned: zod.boolean(),
+});
 
 export const SetGroupPinnedResponse = zod.object({
-  "isPinned": zod.boolean()
-})
+  isPinned: zod.boolean(),
+});
 
+/**
+ * Purely personal — silences notifications for this group for the caller only. Never affects the caller's ability to send or receive messages, or any other member's settings.
+ * @summary Mute or unmute a group for the current user
+ */
+export const SetGroupMutedParams = zod.object({
+  groupId: zod.coerce.string(),
+});
+
+export const SetGroupMutedBody = zod.object({
+  muted: zod.boolean(),
+});
+
+export const SetGroupMutedResponse = zod.object({
+  isMuted: zod.boolean(),
+});
 
 /**
  * Any member can remove themselves (leave the group). Removing someone else requires being the group's creator. Either way, a "system" message announcing the departure is inserted into the group's chat history and broadcast live to remaining members.
  * @summary Remove a member from a group, or leave it yourself
  */
 export const RemoveGroupMemberParams = zod.object({
-  "groupId": zod.coerce.string(),
-  "userId": zod.coerce.string()
-})
+  groupId: zod.coerce.string(),
+  userId: zod.coerce.string(),
+});
 
-export const RemoveGroupMemberResponse = zod.void()
-
+export const RemoveGroupMemberResponse = zod.void();
 
 /**
  * Returns messages oldest-first. Use limit/offset query params for pagination. Defaults to 50 messages per page, maximum 100.
  * @summary List messages in a group
  */
 export const ListMessagesParams = zod.object({
-  "groupId": zod.coerce.string()
-})
+  groupId: zod.coerce.string(),
+});
 
 export const listMessagesQueryLimitDefault = 50;
 export const listMessagesQueryLimitMax = 100;
@@ -365,414 +426,577 @@ export const listMessagesQueryLimitMax = 100;
 export const listMessagesQueryOffsetDefault = 0;
 export const listMessagesQueryOffsetMin = 0;
 
-
-
 export const ListMessagesQueryParams = zod.object({
-  "limit": zod.coerce.number().min(1).max(listMessagesQueryLimitMax).default(listMessagesQueryLimitDefault),
-  "offset": zod.coerce.number().min(listMessagesQueryOffsetMin).default(listMessagesQueryOffsetDefault)
-})
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listMessagesQueryLimitMax)
+    .default(listMessagesQueryLimitDefault),
+  offset: zod.coerce
+    .number()
+    .min(listMessagesQueryOffsetMin)
+    .default(listMessagesQueryOffsetDefault),
+});
 
 export const listMessagesResponseTypeDefault = `text`;
 
 export const ListMessagesResponseItem = zod.object({
-  "id": zod.string(),
-  "groupId": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "senderAvatarUrl": zod.string().nullish(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice', 'system']).default(listMessagesResponseTypeDefault),
-  "fileName": zod.string().nullish(),
-  "mimeType": zod.string().nullish(),
-  "fileSize": zod.number().nullish(),
-  "durationSeconds": zod.number().nullish().describe('Playback duration in seconds, for voice messages.'),
-  "replyToId": zod.string().nullish(),
-  "replyTo": zod.union([zod.object({
-  "id": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']),
-  "fileName": zod.string().nullish(),
-  "deletedAt": zod.string().nullable().describe('If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.')
-}).describe('A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n'),zod.null()]).optional(),
-  "mentionedUserIds": zod.array(zod.string()).describe('Group member user IDs tagged with @mentions in this message.'),
-  "createdAt": zod.string(),
-  "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish(),
-  "reactions": zod.array(zod.object({
-  "emoji": zod.string(),
-  "userIds": zod.array(zod.string())
-}))
-})
-export const ListMessagesResponse = zod.array(ListMessagesResponseItem)
-
+  id: zod.string(),
+  groupId: zod.string(),
+  senderId: zod.string(),
+  senderName: zod.string(),
+  senderAvatarUrl: zod.string().nullish(),
+  content: zod.string(),
+  type: zod
+    .enum(["text", "file", "voice", "system"])
+    .default(listMessagesResponseTypeDefault),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  fileSize: zod.number().nullish(),
+  durationSeconds: zod
+    .number()
+    .nullish()
+    .describe("Playback duration in seconds, for voice messages."),
+  replyToId: zod.string().nullish(),
+  replyTo: zod
+    .union([
+      zod
+        .object({
+          id: zod.string(),
+          senderId: zod.string(),
+          senderName: zod.string(),
+          content: zod.string(),
+          type: zod.enum(["text", "file", "voice"]),
+          fileName: zod.string().nullish(),
+          deletedAt: zod
+            .string()
+            .nullable()
+            .describe(
+              "If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.",
+            ),
+        })
+        .describe(
+          "A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n",
+        ),
+      zod.null(),
+    ])
+    .optional(),
+  mentionedUserIds: zod
+    .array(zod.string())
+    .describe("Group member user IDs tagged with @mentions in this message."),
+  createdAt: zod.string(),
+  editedAt: zod.string().nullish(),
+  deletedAt: zod.string().nullish(),
+  reactions: zod.array(
+    zod.object({
+      emoji: zod.string(),
+      userIds: zod.array(zod.string()),
+    }),
+  ),
+});
+export const ListMessagesResponse = zod.array(ListMessagesResponseItem);
 
 /**
  * @summary Send a message to a group
  */
 export const SendMessageParams = zod.object({
-  "groupId": zod.coerce.string()
-})
-
+  groupId: zod.coerce.string(),
+});
 
 export const sendMessageBodyTypeDefault = `text`;
 
 export const SendMessageBody = zod.object({
-  "content": zod.string().min(1),
-  "type": zod.enum(['text', 'file', 'voice']).default(sendMessageBodyTypeDefault),
-  "fileName": zod.string().nullish(),
-  "mimeType": zod.string().nullish(),
-  "fileSize": zod.number().nullish(),
-  "durationSeconds": zod.number().nullish(),
-  "replyToId": zod.string().nullish(),
-  "mentionedUserIds": zod.array(zod.string()).optional()
-})
+  content: zod.string().min(1),
+  type: zod.enum(["text", "file", "voice"]).default(sendMessageBodyTypeDefault),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  fileSize: zod.number().nullish(),
+  durationSeconds: zod.number().nullish(),
+  replyToId: zod.string().nullish(),
+  mentionedUserIds: zod.array(zod.string()).optional(),
+});
 
 export const sendMessageResponseTypeDefault = `text`;
 
 export const SendMessageResponse = zod.object({
-  "id": zod.string(),
-  "groupId": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "senderAvatarUrl": zod.string().nullish(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice', 'system']).default(sendMessageResponseTypeDefault),
-  "fileName": zod.string().nullish(),
-  "mimeType": zod.string().nullish(),
-  "fileSize": zod.number().nullish(),
-  "durationSeconds": zod.number().nullish().describe('Playback duration in seconds, for voice messages.'),
-  "replyToId": zod.string().nullish(),
-  "replyTo": zod.union([zod.object({
-  "id": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']),
-  "fileName": zod.string().nullish(),
-  "deletedAt": zod.string().nullable().describe('If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.')
-}).describe('A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n'),zod.null()]).optional(),
-  "mentionedUserIds": zod.array(zod.string()).describe('Group member user IDs tagged with @mentions in this message.'),
-  "createdAt": zod.string(),
-  "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish(),
-  "reactions": zod.array(zod.object({
-  "emoji": zod.string(),
-  "userIds": zod.array(zod.string())
-}))
-})
-
+  id: zod.string(),
+  groupId: zod.string(),
+  senderId: zod.string(),
+  senderName: zod.string(),
+  senderAvatarUrl: zod.string().nullish(),
+  content: zod.string(),
+  type: zod
+    .enum(["text", "file", "voice", "system"])
+    .default(sendMessageResponseTypeDefault),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  fileSize: zod.number().nullish(),
+  durationSeconds: zod
+    .number()
+    .nullish()
+    .describe("Playback duration in seconds, for voice messages."),
+  replyToId: zod.string().nullish(),
+  replyTo: zod
+    .union([
+      zod
+        .object({
+          id: zod.string(),
+          senderId: zod.string(),
+          senderName: zod.string(),
+          content: zod.string(),
+          type: zod.enum(["text", "file", "voice"]),
+          fileName: zod.string().nullish(),
+          deletedAt: zod
+            .string()
+            .nullable()
+            .describe(
+              "If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.",
+            ),
+        })
+        .describe(
+          "A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n",
+        ),
+      zod.null(),
+    ])
+    .optional(),
+  mentionedUserIds: zod
+    .array(zod.string())
+    .describe("Group member user IDs tagged with @mentions in this message."),
+  createdAt: zod.string(),
+  editedAt: zod.string().nullish(),
+  deletedAt: zod.string().nullish(),
+  reactions: zod.array(
+    zod.object({
+      emoji: zod.string(),
+      userIds: zod.array(zod.string()),
+    }),
+  ),
+});
 
 /**
  * Only the original sender can edit their own message, and only text messages can be edited (not file attachments).
  * @summary Edit a text message you sent
  */
 export const EditMessageParams = zod.object({
-  "groupId": zod.coerce.string(),
-  "messageId": zod.coerce.string()
-})
-
-
-
+  groupId: zod.coerce.string(),
+  messageId: zod.coerce.string(),
+});
 
 export const EditMessageBody = zod.object({
-  "content": zod.string().min(1)
-})
+  content: zod.string().min(1),
+});
 
 export const editMessageResponseTypeDefault = `text`;
 
 export const EditMessageResponse = zod.object({
-  "id": zod.string(),
-  "groupId": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "senderAvatarUrl": zod.string().nullish(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice', 'system']).default(editMessageResponseTypeDefault),
-  "fileName": zod.string().nullish(),
-  "mimeType": zod.string().nullish(),
-  "fileSize": zod.number().nullish(),
-  "durationSeconds": zod.number().nullish().describe('Playback duration in seconds, for voice messages.'),
-  "replyToId": zod.string().nullish(),
-  "replyTo": zod.union([zod.object({
-  "id": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']),
-  "fileName": zod.string().nullish(),
-  "deletedAt": zod.string().nullable().describe('If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.')
-}).describe('A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n'),zod.null()]).optional(),
-  "mentionedUserIds": zod.array(zod.string()).describe('Group member user IDs tagged with @mentions in this message.'),
-  "createdAt": zod.string(),
-  "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish(),
-  "reactions": zod.array(zod.object({
-  "emoji": zod.string(),
-  "userIds": zod.array(zod.string())
-}))
-})
-
+  id: zod.string(),
+  groupId: zod.string(),
+  senderId: zod.string(),
+  senderName: zod.string(),
+  senderAvatarUrl: zod.string().nullish(),
+  content: zod.string(),
+  type: zod
+    .enum(["text", "file", "voice", "system"])
+    .default(editMessageResponseTypeDefault),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  fileSize: zod.number().nullish(),
+  durationSeconds: zod
+    .number()
+    .nullish()
+    .describe("Playback duration in seconds, for voice messages."),
+  replyToId: zod.string().nullish(),
+  replyTo: zod
+    .union([
+      zod
+        .object({
+          id: zod.string(),
+          senderId: zod.string(),
+          senderName: zod.string(),
+          content: zod.string(),
+          type: zod.enum(["text", "file", "voice"]),
+          fileName: zod.string().nullish(),
+          deletedAt: zod
+            .string()
+            .nullable()
+            .describe(
+              "If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.",
+            ),
+        })
+        .describe(
+          "A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n",
+        ),
+      zod.null(),
+    ])
+    .optional(),
+  mentionedUserIds: zod
+    .array(zod.string())
+    .describe("Group member user IDs tagged with @mentions in this message."),
+  createdAt: zod.string(),
+  editedAt: zod.string().nullish(),
+  deletedAt: zod.string().nullish(),
+  reactions: zod.array(
+    zod.object({
+      emoji: zod.string(),
+      userIds: zod.array(zod.string()),
+    }),
+  ),
+});
 
 /**
  * Soft-deletes the message: content and any attachment are cleared, but the message row remains (shown as "This message was deleted"). Only the original sender can delete their own message.
  * @summary Delete a message you sent
  */
 export const DeleteMessageParams = zod.object({
-  "groupId": zod.coerce.string(),
-  "messageId": zod.coerce.string()
-})
+  groupId: zod.coerce.string(),
+  messageId: zod.coerce.string(),
+});
 
 export const deleteMessageResponseTypeDefault = `text`;
 
 export const DeleteMessageResponse = zod.object({
-  "id": zod.string(),
-  "groupId": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "senderAvatarUrl": zod.string().nullish(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice', 'system']).default(deleteMessageResponseTypeDefault),
-  "fileName": zod.string().nullish(),
-  "mimeType": zod.string().nullish(),
-  "fileSize": zod.number().nullish(),
-  "durationSeconds": zod.number().nullish().describe('Playback duration in seconds, for voice messages.'),
-  "replyToId": zod.string().nullish(),
-  "replyTo": zod.union([zod.object({
-  "id": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']),
-  "fileName": zod.string().nullish(),
-  "deletedAt": zod.string().nullable().describe('If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.')
-}).describe('A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n'),zod.null()]).optional(),
-  "mentionedUserIds": zod.array(zod.string()).describe('Group member user IDs tagged with @mentions in this message.'),
-  "createdAt": zod.string(),
-  "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish(),
-  "reactions": zod.array(zod.object({
-  "emoji": zod.string(),
-  "userIds": zod.array(zod.string())
-}))
-})
-
+  id: zod.string(),
+  groupId: zod.string(),
+  senderId: zod.string(),
+  senderName: zod.string(),
+  senderAvatarUrl: zod.string().nullish(),
+  content: zod.string(),
+  type: zod
+    .enum(["text", "file", "voice", "system"])
+    .default(deleteMessageResponseTypeDefault),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  fileSize: zod.number().nullish(),
+  durationSeconds: zod
+    .number()
+    .nullish()
+    .describe("Playback duration in seconds, for voice messages."),
+  replyToId: zod.string().nullish(),
+  replyTo: zod
+    .union([
+      zod
+        .object({
+          id: zod.string(),
+          senderId: zod.string(),
+          senderName: zod.string(),
+          content: zod.string(),
+          type: zod.enum(["text", "file", "voice"]),
+          fileName: zod.string().nullish(),
+          deletedAt: zod
+            .string()
+            .nullable()
+            .describe(
+              "If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.",
+            ),
+        })
+        .describe(
+          "A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n",
+        ),
+      zod.null(),
+    ])
+    .optional(),
+  mentionedUserIds: zod
+    .array(zod.string())
+    .describe("Group member user IDs tagged with @mentions in this message."),
+  createdAt: zod.string(),
+  editedAt: zod.string().nullish(),
+  deletedAt: zod.string().nullish(),
+  reactions: zod.array(
+    zod.object({
+      emoji: zod.string(),
+      userIds: zod.array(zod.string()),
+    }),
+  ),
+});
 
 /**
  * If you've already reacted with this emoji, removes it; otherwise adds it. Any current group member may react, including to their own messages. Returns the message's full updated reaction list.
  * @summary Toggle your reaction on a message
  */
 export const ToggleMessageReactionParams = zod.object({
-  "groupId": zod.coerce.string(),
-  "messageId": zod.coerce.string()
-})
+  groupId: zod.coerce.string(),
+  messageId: zod.coerce.string(),
+});
 
 export const toggleMessageReactionBodyEmojiMax = 8;
 
-
-
 export const ToggleMessageReactionBody = zod.object({
-  "emoji": zod.string().min(1).max(toggleMessageReactionBodyEmojiMax)
-})
+  emoji: zod.string().min(1).max(toggleMessageReactionBodyEmojiMax),
+});
 
 export const ToggleMessageReactionResponseItem = zod.object({
-  "emoji": zod.string(),
-  "userIds": zod.array(zod.string())
-})
-export const ToggleMessageReactionResponse = zod.array(ToggleMessageReactionResponseItem)
-
+  emoji: zod.string(),
+  userIds: zod.array(zod.string()),
+});
+export const ToggleMessageReactionResponse = zod.array(
+  ToggleMessageReactionResponseItem,
+);
 
 /**
  * @summary List the current user's DM threads
  */
 export const ListDmThreadsResponseItem = zod.object({
-  "id": zod.string(),
-  "otherUserId": zod.string(),
-  "otherUserName": zod.string(),
-  "otherUserEmail": zod.string(),
-  "otherUserAvatarUrl": zod.string().nullish(),
-  "otherUserPublicKey": zod.string().nullish(),
-  "otherUserHasEncryptionKey": zod.boolean(),
-  "createdAt": zod.string(),
-  "lastMessageAt": zod.string().nullish(),
-  "lastMessagePreview": zod.string().nullish(),
-  "myLastReadAt": zod.string().nullish(),
-  "otherUserLastReadAt": zod.string().nullish().describe('Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n'),
-  "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.'),
-  "status": zod.enum(['pending', 'accepted', 'rejected']).describe('Message-request status. \"pending\": only the initiator can send, until the other side accepts\/rejects via PUT \/dms\/{threadId}\/respond. \"accepted\": both sides can send freely. \"rejected\": a one-directional permanent block on the initiator only — see canSendDm in the API server.\n'),
-  "isInitiatedByMe": zod.boolean().describe('Whether the current user was the one who started this thread.'),
-  "isPinned": zod.boolean().describe('Whether the current user has pinned this thread to the top of their own chat list. Per-side, like the read receipts — the other participant pinning it doesn\'t affect your view.\n')
-})
-export const ListDmThreadsResponse = zod.array(ListDmThreadsResponseItem)
-
+  id: zod.string(),
+  otherUserId: zod.string(),
+  otherUserName: zod.string(),
+  otherUserEmail: zod.string(),
+  otherUserAvatarUrl: zod.string().nullish(),
+  otherUserPublicKey: zod.string().nullish(),
+  otherUserHasEncryptionKey: zod.boolean(),
+  createdAt: zod.string(),
+  lastMessageAt: zod.string().nullish(),
+  lastMessagePreview: zod.string().nullish(),
+  myLastReadAt: zod.string().nullish(),
+  otherUserLastReadAt: zod
+    .string()
+    .nullish()
+    .describe(
+      'Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n',
+    ),
+  unreadCount: zod
+    .number()
+    .describe(
+      "Messages from the other participant created after myLastReadAt.",
+    ),
+  status: zod
+    .enum(["pending", "accepted", "rejected"])
+    .describe(
+      'Message-request status. \"pending\": only the initiator can send, until the other side accepts\/rejects via PUT \/dms\/{threadId}\/respond. \"accepted\": both sides can send freely. \"rejected\": a one-directional permanent block on the initiator only — see canSendDm in the API server.\n',
+    ),
+  isInitiatedByMe: zod
+    .boolean()
+    .describe("Whether the current user was the one who started this thread."),
+  isPinned: zod
+    .boolean()
+    .describe(
+      "Whether the current user has pinned this thread to the top of their own chat list. Per-side, like the read receipts — the other participant pinning it doesn't affect your view.\n",
+    ),
+  isMuted: zod
+    .boolean()
+    .describe(
+      "Whether the current user has muted notifications for this thread. Per-side, like isPinned — never affects sending or receiving messages.\n",
+    ),
+});
+export const ListDmThreadsResponse = zod.array(ListDmThreadsResponseItem);
 
 /**
  * @summary Start (or get the existing) DM thread with a user by email
  */
 export const CreateDmThreadBody = zod.object({
-  "email": zod.string()
-})
+  email: zod.string(),
+});
 
 export const CreateDmThreadResponse = zod.object({
-  "id": zod.string(),
-  "otherUserId": zod.string(),
-  "otherUserName": zod.string(),
-  "otherUserEmail": zod.string(),
-  "otherUserAvatarUrl": zod.string().nullish(),
-  "otherUserPublicKey": zod.string().nullish(),
-  "otherUserHasEncryptionKey": zod.boolean(),
-  "createdAt": zod.string(),
-  "lastMessageAt": zod.string().nullish(),
-  "lastMessagePreview": zod.string().nullish(),
-  "myLastReadAt": zod.string().nullish(),
-  "otherUserLastReadAt": zod.string().nullish().describe('Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n'),
-  "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.'),
-  "status": zod.enum(['pending', 'accepted', 'rejected']).describe('Message-request status. \"pending\": only the initiator can send, until the other side accepts\/rejects via PUT \/dms\/{threadId}\/respond. \"accepted\": both sides can send freely. \"rejected\": a one-directional permanent block on the initiator only — see canSendDm in the API server.\n'),
-  "isInitiatedByMe": zod.boolean().describe('Whether the current user was the one who started this thread.'),
-  "isPinned": zod.boolean().describe('Whether the current user has pinned this thread to the top of their own chat list. Per-side, like the read receipts — the other participant pinning it doesn\'t affect your view.\n')
-})
-
+  id: zod.string(),
+  otherUserId: zod.string(),
+  otherUserName: zod.string(),
+  otherUserEmail: zod.string(),
+  otherUserAvatarUrl: zod.string().nullish(),
+  otherUserPublicKey: zod.string().nullish(),
+  otherUserHasEncryptionKey: zod.boolean(),
+  createdAt: zod.string(),
+  lastMessageAt: zod.string().nullish(),
+  lastMessagePreview: zod.string().nullish(),
+  myLastReadAt: zod.string().nullish(),
+  otherUserLastReadAt: zod
+    .string()
+    .nullish()
+    .describe(
+      'Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n',
+    ),
+  unreadCount: zod
+    .number()
+    .describe(
+      "Messages from the other participant created after myLastReadAt.",
+    ),
+  status: zod
+    .enum(["pending", "accepted", "rejected"])
+    .describe(
+      'Message-request status. \"pending\": only the initiator can send, until the other side accepts\/rejects via PUT \/dms\/{threadId}\/respond. \"accepted\": both sides can send freely. \"rejected\": a one-directional permanent block on the initiator only — see canSendDm in the API server.\n',
+    ),
+  isInitiatedByMe: zod
+    .boolean()
+    .describe("Whether the current user was the one who started this thread."),
+  isPinned: zod
+    .boolean()
+    .describe(
+      "Whether the current user has pinned this thread to the top of their own chat list. Per-side, like the read receipts — the other participant pinning it doesn't affect your view.\n",
+    ),
+  isMuted: zod
+    .boolean()
+    .describe(
+      "Whether the current user has muted notifications for this thread. Per-side, like isPinned — never affects sending or receiving messages.\n",
+    ),
+});
 
 /**
  * @summary Get a DM thread's detail
  */
 export const GetDmThreadParams = zod.object({
-  "threadId": zod.coerce.string()
-})
+  threadId: zod.coerce.string(),
+});
 
 export const GetDmThreadResponse = zod.object({
-  "id": zod.string(),
-  "otherUserId": zod.string(),
-  "otherUserName": zod.string(),
-  "otherUserEmail": zod.string(),
-  "otherUserAvatarUrl": zod.string().nullish(),
-  "otherUserPublicKey": zod.string().nullish(),
-  "otherUserHasEncryptionKey": zod.boolean(),
-  "createdAt": zod.string(),
-  "lastMessageAt": zod.string().nullish(),
-  "lastMessagePreview": zod.string().nullish(),
-  "myLastReadAt": zod.string().nullish(),
-  "otherUserLastReadAt": zod.string().nullish().describe('Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n'),
-  "unreadCount": zod.number().describe('Messages from the other participant created after myLastReadAt.'),
-  "status": zod.enum(['pending', 'accepted', 'rejected']).describe('Message-request status. \"pending\": only the initiator can send, until the other side accepts\/rejects via PUT \/dms\/{threadId}\/respond. \"accepted\": both sides can send freely. \"rejected\": a one-directional permanent block on the initiator only — see canSendDm in the API server.\n'),
-  "isInitiatedByMe": zod.boolean().describe('Whether the current user was the one who started this thread.'),
-  "isPinned": zod.boolean().describe('Whether the current user has pinned this thread to the top of their own chat list. Per-side, like the read receipts — the other participant pinning it doesn\'t affect your view.\n')
-})
-
+  id: zod.string(),
+  otherUserId: zod.string(),
+  otherUserName: zod.string(),
+  otherUserEmail: zod.string(),
+  otherUserAvatarUrl: zod.string().nullish(),
+  otherUserPublicKey: zod.string().nullish(),
+  otherUserHasEncryptionKey: zod.boolean(),
+  createdAt: zod.string(),
+  lastMessageAt: zod.string().nullish(),
+  lastMessagePreview: zod.string().nullish(),
+  myLastReadAt: zod.string().nullish(),
+  otherUserLastReadAt: zod
+    .string()
+    .nullish()
+    .describe(
+      'Used by the current user to compute a \"Seen\" receipt on their own last message in this thread.\n',
+    ),
+  unreadCount: zod
+    .number()
+    .describe(
+      "Messages from the other participant created after myLastReadAt.",
+    ),
+  status: zod
+    .enum(["pending", "accepted", "rejected"])
+    .describe(
+      'Message-request status. \"pending\": only the initiator can send, until the other side accepts\/rejects via PUT \/dms\/{threadId}\/respond. \"accepted\": both sides can send freely. \"rejected\": a one-directional permanent block on the initiator only — see canSendDm in the API server.\n',
+    ),
+  isInitiatedByMe: zod
+    .boolean()
+    .describe("Whether the current user was the one who started this thread."),
+  isPinned: zod
+    .boolean()
+    .describe(
+      "Whether the current user has pinned this thread to the top of their own chat list. Per-side, like the read receipts — the other participant pinning it doesn't affect your view.\n",
+    ),
+  isMuted: zod
+    .boolean()
+    .describe(
+      "Whether the current user has muted notifications for this thread. Per-side, like isPinned — never affects sending or receiving messages.\n",
+    ),
+});
 
 /**
  * Either participant can do this (unlike groups, a DM thread has no single "owner"). Deletes the thread and everything in it (messages, encryption keys) via cascading foreign keys, and notifies the other participant over WebSocket if they're currently viewing it so their client can leave the chat immediately.
  * @summary Delete an entire DM thread
  */
 export const DeleteDmThreadParams = zod.object({
-  "threadId": zod.coerce.string()
-})
+  threadId: zod.coerce.string(),
+});
 
-export const DeleteDmThreadResponse = zod.void()
-
+export const DeleteDmThreadResponse = zod.void();
 
 /**
  * Returns the thread's symmetric encryption key, wrapped with the current user's public key. Returns wrappedKey null if it has not been shared with this user yet.
  * @summary Get the current user's wrapped end-to-end encryption key for a DM thread
  */
 export const GetMyDmKeyParams = zod.object({
-  "threadId": zod.coerce.string()
-})
+  threadId: zod.coerce.string(),
+});
 
 export const GetMyDmKeyResponse = zod.object({
-  "threadId": zod.string(),
-  "wrappedKey": zod.string().nullable()
-})
-
+  threadId: zod.string(),
+  wrappedKey: zod.string().nullable(),
+});
 
 /**
  * Stores a copy of the thread's symmetric key, wrapped with the target participant's public key. Called by whichever participant already holds the decrypted thread key (e.g. the thread creator, or when re-sharing after the other participant sets their public key).
  * @summary Share a wrapped copy of the DM thread's encryption key with a participant
  */
 export const SetDmKeyParams = zod.object({
-  "threadId": zod.coerce.string()
-})
-
-
-
+  threadId: zod.coerce.string(),
+});
 
 export const SetDmKeyBody = zod.object({
-  "userId": zod.string(),
-  "wrappedKey": zod.string().min(1)
-})
+  userId: zod.string(),
+  wrappedKey: zod.string().min(1),
+});
 
 export const SetDmKeyResponse = zod.object({
-  "threadId": zod.string(),
-  "wrappedKey": zod.string().nullable()
-})
-
+  threadId: zod.string(),
+  wrappedKey: zod.string().nullable(),
+});
 
 /**
  * Same idea as requestGroupKeyAccess, for a DM thread. Best-effort — only takes effect if the other participant is currently connected to this thread and already holds the decrypted key.
  * @summary Ask the other participant to re-share the thread key with me
  */
 export const RequestDmKeyAccessParams = zod.object({
-  "threadId": zod.coerce.string()
-})
+  threadId: zod.coerce.string(),
+});
 
-export const RequestDmKeyAccessResponse = zod.void()
-
+export const RequestDmKeyAccessResponse = zod.void();
 
 /**
  * Sets the current user's last-read timestamp for this thread to now. Powers unread badges (client compares each message's createdAt against this timestamp) and the "Seen" receipt (the sender compares their last message's createdAt against the other participant's last-read timestamp). Broadcasts a WS "read" event so the other participant, if currently viewing the thread, updates seen-status live.
  * @summary Mark a DM thread as read up to now, for the current user
  */
 export const MarkDmThreadReadParams = zod.object({
-  "threadId": zod.coerce.string()
-})
+  threadId: zod.coerce.string(),
+});
 
 export const MarkDmThreadReadResponse = zod.object({
-  "lastReadAt": zod.string()
-})
-
+  lastReadAt: zod.string(),
+});
 
 /**
  * Purely personal, like read receipts — only affects how this thread sorts in the caller's own list, not the other participant's.
  * @summary Pin or unpin a DM thread in the current user's own chat list
  */
 export const SetDmThreadPinnedParams = zod.object({
-  "threadId": zod.coerce.string()
-})
+  threadId: zod.coerce.string(),
+});
 
 export const SetDmThreadPinnedBody = zod.object({
-  "pinned": zod.boolean()
-})
+  pinned: zod.boolean(),
+});
 
 export const SetDmThreadPinnedResponse = zod.object({
-  "isPinned": zod.boolean()
-})
+  isPinned: zod.boolean(),
+});
 
+/**
+ * Purely personal, like pinning — silences notifications for this thread for the caller only, and never affects the caller's ability to send or receive messages, or the other participant's settings.
+ * @summary Mute or unmute a DM thread for the current user
+ */
+export const SetDmThreadMutedParams = zod.object({
+  threadId: zod.coerce.string(),
+});
+
+export const SetDmThreadMutedBody = zod.object({
+  muted: zod.boolean(),
+});
+
+export const SetDmThreadMutedResponse = zod.object({
+  isMuted: zod.boolean(),
+});
 
 /**
  * Only the non-initiator (recipient) of a "pending" thread can call this, and only while it's still pending. Rejecting is a one-directional permanent block: the initiator can never send into this thread again, but the recipient still can (e.g. if they change their mind and reach out themselves later). Broadcasts a WS "dm-request-responded" event so the initiator's UI updates live.
  * @summary Accept or reject a pending DM message request
  */
 export const RespondToDmThreadParams = zod.object({
-  "threadId": zod.coerce.string()
-})
+  threadId: zod.coerce.string(),
+});
 
 export const RespondToDmThreadBody = zod.object({
-  "action": zod.enum(['accept', 'reject'])
-})
+  action: zod.enum(["accept", "reject"]),
+});
 
 export const RespondToDmThreadResponse = zod.object({
-  "status": zod.enum(['accepted', 'rejected'])
-})
-
+  status: zod.enum(["accepted", "rejected"]),
+});
 
 /**
  * Returns messages oldest-first. Use limit/offset query params for pagination. Defaults to 50 messages per page, maximum 100.
  * @summary List messages in a DM thread
  */
 export const ListDmMessagesParams = zod.object({
-  "threadId": zod.coerce.string()
-})
+  threadId: zod.coerce.string(),
+});
 
 export const listDmMessagesQueryLimitDefault = 50;
 export const listDmMessagesQueryLimitMax = 100;
@@ -780,218 +1004,300 @@ export const listDmMessagesQueryLimitMax = 100;
 export const listDmMessagesQueryOffsetDefault = 0;
 export const listDmMessagesQueryOffsetMin = 0;
 
-
-
 export const ListDmMessagesQueryParams = zod.object({
-  "limit": zod.coerce.number().min(1).max(listDmMessagesQueryLimitMax).default(listDmMessagesQueryLimitDefault),
-  "offset": zod.coerce.number().min(listDmMessagesQueryOffsetMin).default(listDmMessagesQueryOffsetDefault)
-})
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listDmMessagesQueryLimitMax)
+    .default(listDmMessagesQueryLimitDefault),
+  offset: zod.coerce
+    .number()
+    .min(listDmMessagesQueryOffsetMin)
+    .default(listDmMessagesQueryOffsetDefault),
+});
 
 export const listDmMessagesResponseTypeDefault = `text`;
 
 export const ListDmMessagesResponseItem = zod.object({
-  "id": zod.string(),
-  "threadId": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "senderAvatarUrl": zod.string().nullish(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']).default(listDmMessagesResponseTypeDefault),
-  "fileName": zod.string().nullish(),
-  "mimeType": zod.string().nullish(),
-  "fileSize": zod.number().nullish(),
-  "durationSeconds": zod.number().nullish().describe('Playback duration in seconds, for voice messages.'),
-  "replyToId": zod.string().nullish(),
-  "replyTo": zod.union([zod.object({
-  "id": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']),
-  "fileName": zod.string().nullish(),
-  "deletedAt": zod.string().nullable().describe('If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.')
-}).describe('A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n'),zod.null()]).optional(),
-  "createdAt": zod.string(),
-  "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish(),
-  "reactions": zod.array(zod.object({
-  "emoji": zod.string(),
-  "userIds": zod.array(zod.string())
-}))
-})
-export const ListDmMessagesResponse = zod.array(ListDmMessagesResponseItem)
-
+  id: zod.string(),
+  threadId: zod.string(),
+  senderId: zod.string(),
+  senderName: zod.string(),
+  senderAvatarUrl: zod.string().nullish(),
+  content: zod.string(),
+  type: zod
+    .enum(["text", "file", "voice"])
+    .default(listDmMessagesResponseTypeDefault),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  fileSize: zod.number().nullish(),
+  durationSeconds: zod
+    .number()
+    .nullish()
+    .describe("Playback duration in seconds, for voice messages."),
+  replyToId: zod.string().nullish(),
+  replyTo: zod
+    .union([
+      zod
+        .object({
+          id: zod.string(),
+          senderId: zod.string(),
+          senderName: zod.string(),
+          content: zod.string(),
+          type: zod.enum(["text", "file", "voice"]),
+          fileName: zod.string().nullish(),
+          deletedAt: zod
+            .string()
+            .nullable()
+            .describe(
+              "If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.",
+            ),
+        })
+        .describe(
+          "A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n",
+        ),
+      zod.null(),
+    ])
+    .optional(),
+  createdAt: zod.string(),
+  editedAt: zod.string().nullish(),
+  deletedAt: zod.string().nullish(),
+  reactions: zod.array(
+    zod.object({
+      emoji: zod.string(),
+      userIds: zod.array(zod.string()),
+    }),
+  ),
+});
+export const ListDmMessagesResponse = zod.array(ListDmMessagesResponseItem);
 
 /**
  * @summary Send a message in a DM thread
  */
 export const SendDmMessageParams = zod.object({
-  "threadId": zod.coerce.string()
-})
-
+  threadId: zod.coerce.string(),
+});
 
 export const sendDmMessageBodyTypeDefault = `text`;
 
 export const SendDmMessageBody = zod.object({
-  "content": zod.string().min(1),
-  "type": zod.enum(['text', 'file', 'voice']).default(sendDmMessageBodyTypeDefault),
-  "fileName": zod.string().nullish(),
-  "mimeType": zod.string().nullish(),
-  "fileSize": zod.number().nullish(),
-  "durationSeconds": zod.number().nullish(),
-  "replyToId": zod.string().nullish()
-})
+  content: zod.string().min(1),
+  type: zod
+    .enum(["text", "file", "voice"])
+    .default(sendDmMessageBodyTypeDefault),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  fileSize: zod.number().nullish(),
+  durationSeconds: zod.number().nullish(),
+  replyToId: zod.string().nullish(),
+});
 
 export const sendDmMessageResponseTypeDefault = `text`;
 
 export const SendDmMessageResponse = zod.object({
-  "id": zod.string(),
-  "threadId": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "senderAvatarUrl": zod.string().nullish(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']).default(sendDmMessageResponseTypeDefault),
-  "fileName": zod.string().nullish(),
-  "mimeType": zod.string().nullish(),
-  "fileSize": zod.number().nullish(),
-  "durationSeconds": zod.number().nullish().describe('Playback duration in seconds, for voice messages.'),
-  "replyToId": zod.string().nullish(),
-  "replyTo": zod.union([zod.object({
-  "id": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']),
-  "fileName": zod.string().nullish(),
-  "deletedAt": zod.string().nullable().describe('If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.')
-}).describe('A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n'),zod.null()]).optional(),
-  "createdAt": zod.string(),
-  "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish(),
-  "reactions": zod.array(zod.object({
-  "emoji": zod.string(),
-  "userIds": zod.array(zod.string())
-}))
-})
-
+  id: zod.string(),
+  threadId: zod.string(),
+  senderId: zod.string(),
+  senderName: zod.string(),
+  senderAvatarUrl: zod.string().nullish(),
+  content: zod.string(),
+  type: zod
+    .enum(["text", "file", "voice"])
+    .default(sendDmMessageResponseTypeDefault),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  fileSize: zod.number().nullish(),
+  durationSeconds: zod
+    .number()
+    .nullish()
+    .describe("Playback duration in seconds, for voice messages."),
+  replyToId: zod.string().nullish(),
+  replyTo: zod
+    .union([
+      zod
+        .object({
+          id: zod.string(),
+          senderId: zod.string(),
+          senderName: zod.string(),
+          content: zod.string(),
+          type: zod.enum(["text", "file", "voice"]),
+          fileName: zod.string().nullish(),
+          deletedAt: zod
+            .string()
+            .nullable()
+            .describe(
+              "If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.",
+            ),
+        })
+        .describe(
+          "A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n",
+        ),
+      zod.null(),
+    ])
+    .optional(),
+  createdAt: zod.string(),
+  editedAt: zod.string().nullish(),
+  deletedAt: zod.string().nullish(),
+  reactions: zod.array(
+    zod.object({
+      emoji: zod.string(),
+      userIds: zod.array(zod.string()),
+    }),
+  ),
+});
 
 /**
  * Only the original sender can edit their own message, and only text messages can be edited (not file attachments).
  * @summary Edit a text message you sent in a DM thread
  */
 export const EditDmMessageParams = zod.object({
-  "threadId": zod.coerce.string(),
-  "messageId": zod.coerce.string()
-})
-
-
-
+  threadId: zod.coerce.string(),
+  messageId: zod.coerce.string(),
+});
 
 export const EditDmMessageBody = zod.object({
-  "content": zod.string().min(1)
-})
+  content: zod.string().min(1),
+});
 
 export const editDmMessageResponseTypeDefault = `text`;
 
 export const EditDmMessageResponse = zod.object({
-  "id": zod.string(),
-  "threadId": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "senderAvatarUrl": zod.string().nullish(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']).default(editDmMessageResponseTypeDefault),
-  "fileName": zod.string().nullish(),
-  "mimeType": zod.string().nullish(),
-  "fileSize": zod.number().nullish(),
-  "durationSeconds": zod.number().nullish().describe('Playback duration in seconds, for voice messages.'),
-  "replyToId": zod.string().nullish(),
-  "replyTo": zod.union([zod.object({
-  "id": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']),
-  "fileName": zod.string().nullish(),
-  "deletedAt": zod.string().nullable().describe('If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.')
-}).describe('A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n'),zod.null()]).optional(),
-  "createdAt": zod.string(),
-  "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish(),
-  "reactions": zod.array(zod.object({
-  "emoji": zod.string(),
-  "userIds": zod.array(zod.string())
-}))
-})
-
+  id: zod.string(),
+  threadId: zod.string(),
+  senderId: zod.string(),
+  senderName: zod.string(),
+  senderAvatarUrl: zod.string().nullish(),
+  content: zod.string(),
+  type: zod
+    .enum(["text", "file", "voice"])
+    .default(editDmMessageResponseTypeDefault),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  fileSize: zod.number().nullish(),
+  durationSeconds: zod
+    .number()
+    .nullish()
+    .describe("Playback duration in seconds, for voice messages."),
+  replyToId: zod.string().nullish(),
+  replyTo: zod
+    .union([
+      zod
+        .object({
+          id: zod.string(),
+          senderId: zod.string(),
+          senderName: zod.string(),
+          content: zod.string(),
+          type: zod.enum(["text", "file", "voice"]),
+          fileName: zod.string().nullish(),
+          deletedAt: zod
+            .string()
+            .nullable()
+            .describe(
+              "If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.",
+            ),
+        })
+        .describe(
+          "A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n",
+        ),
+      zod.null(),
+    ])
+    .optional(),
+  createdAt: zod.string(),
+  editedAt: zod.string().nullish(),
+  deletedAt: zod.string().nullish(),
+  reactions: zod.array(
+    zod.object({
+      emoji: zod.string(),
+      userIds: zod.array(zod.string()),
+    }),
+  ),
+});
 
 /**
  * Soft-deletes the message: content and any attachment are cleared, but the message row remains (shown as "This message was deleted"). Only the original sender can delete their own message.
  * @summary Delete a message you sent in a DM thread
  */
 export const DeleteDmMessageParams = zod.object({
-  "threadId": zod.coerce.string(),
-  "messageId": zod.coerce.string()
-})
+  threadId: zod.coerce.string(),
+  messageId: zod.coerce.string(),
+});
 
 export const deleteDmMessageResponseTypeDefault = `text`;
 
 export const DeleteDmMessageResponse = zod.object({
-  "id": zod.string(),
-  "threadId": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "senderAvatarUrl": zod.string().nullish(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']).default(deleteDmMessageResponseTypeDefault),
-  "fileName": zod.string().nullish(),
-  "mimeType": zod.string().nullish(),
-  "fileSize": zod.number().nullish(),
-  "durationSeconds": zod.number().nullish().describe('Playback duration in seconds, for voice messages.'),
-  "replyToId": zod.string().nullish(),
-  "replyTo": zod.union([zod.object({
-  "id": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']),
-  "fileName": zod.string().nullish(),
-  "deletedAt": zod.string().nullable().describe('If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.')
-}).describe('A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n'),zod.null()]).optional(),
-  "createdAt": zod.string(),
-  "editedAt": zod.string().nullish(),
-  "deletedAt": zod.string().nullish(),
-  "reactions": zod.array(zod.object({
-  "emoji": zod.string(),
-  "userIds": zod.array(zod.string())
-}))
-})
-
+  id: zod.string(),
+  threadId: zod.string(),
+  senderId: zod.string(),
+  senderName: zod.string(),
+  senderAvatarUrl: zod.string().nullish(),
+  content: zod.string(),
+  type: zod
+    .enum(["text", "file", "voice"])
+    .default(deleteDmMessageResponseTypeDefault),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  fileSize: zod.number().nullish(),
+  durationSeconds: zod
+    .number()
+    .nullish()
+    .describe("Playback duration in seconds, for voice messages."),
+  replyToId: zod.string().nullish(),
+  replyTo: zod
+    .union([
+      zod
+        .object({
+          id: zod.string(),
+          senderId: zod.string(),
+          senderName: zod.string(),
+          content: zod.string(),
+          type: zod.enum(["text", "file", "voice"]),
+          fileName: zod.string().nullish(),
+          deletedAt: zod
+            .string()
+            .nullable()
+            .describe(
+              "If set, the quoted message was deleted; show a placeholder instead of the (now-cleared) content.",
+            ),
+        })
+        .describe(
+          "A denormalized snapshot of the message being replied to, so clients can render a quoted snippet without needing that message to already be loaded on the page. `content` is still E2E-encrypted ciphertext (the server never sees plaintext), decrypted client-side same as any other message.\n",
+        ),
+      zod.null(),
+    ])
+    .optional(),
+  createdAt: zod.string(),
+  editedAt: zod.string().nullish(),
+  deletedAt: zod.string().nullish(),
+  reactions: zod.array(
+    zod.object({
+      emoji: zod.string(),
+      userIds: zod.array(zod.string()),
+    }),
+  ),
+});
 
 /**
  * If you've already reacted with this emoji, removes it; otherwise adds it. Returns the message's full updated reaction list.
  * @summary Toggle your reaction on a DM message
  */
 export const ToggleDmMessageReactionParams = zod.object({
-  "threadId": zod.coerce.string(),
-  "messageId": zod.coerce.string()
-})
+  threadId: zod.coerce.string(),
+  messageId: zod.coerce.string(),
+});
 
 export const toggleDmMessageReactionBodyEmojiMax = 8;
 
-
-
 export const ToggleDmMessageReactionBody = zod.object({
-  "emoji": zod.string().min(1).max(toggleDmMessageReactionBodyEmojiMax)
-})
+  emoji: zod.string().min(1).max(toggleDmMessageReactionBodyEmojiMax),
+});
 
 export const ToggleDmMessageReactionResponseItem = zod.object({
-  "emoji": zod.string(),
-  "userIds": zod.array(zod.string())
-})
-export const ToggleDmMessageReactionResponse = zod.array(ToggleDmMessageReactionResponseItem)
-
+  emoji: zod.string(),
+  userIds: zod.array(zod.string()),
+});
+export const ToggleDmMessageReactionResponse = zod.array(
+  ToggleDmMessageReactionResponseItem,
+);
 
 /**
  * Returns recent activity newest-first. Use limit/offset query params for pagination. Defaults to 30 items per page, maximum 100.
@@ -1003,21 +1309,26 @@ export const getRecentActivityQueryLimitMax = 100;
 export const getRecentActivityQueryOffsetDefault = 0;
 export const getRecentActivityQueryOffsetMin = 0;
 
-
-
 export const GetRecentActivityQueryParams = zod.object({
-  "limit": zod.coerce.number().min(1).max(getRecentActivityQueryLimitMax).default(getRecentActivityQueryLimitDefault),
-  "offset": zod.coerce.number().min(getRecentActivityQueryOffsetMin).default(getRecentActivityQueryOffsetDefault)
-})
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(getRecentActivityQueryLimitMax)
+    .default(getRecentActivityQueryLimitDefault),
+  offset: zod.coerce
+    .number()
+    .min(getRecentActivityQueryOffsetMin)
+    .default(getRecentActivityQueryOffsetDefault),
+});
 
 export const GetRecentActivityResponseItem = zod.object({
-  "groupId": zod.string(),
-  "groupName": zod.string(),
-  "senderId": zod.string(),
-  "senderName": zod.string(),
-  "content": zod.string(),
-  "createdAt": zod.string()
-})
-export const GetRecentActivityResponse = zod.array(GetRecentActivityResponseItem)
-
-
+  groupId: zod.string(),
+  groupName: zod.string(),
+  senderId: zod.string(),
+  senderName: zod.string(),
+  content: zod.string(),
+  createdAt: zod.string(),
+});
+export const GetRecentActivityResponse = zod.array(
+  GetRecentActivityResponseItem,
+);

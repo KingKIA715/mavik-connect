@@ -20,10 +20,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Badge } from "@/components/ui/badge";
 import { format, formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { Phone, Key, Smartphone, Monitor } from "lucide-react";
+import { useTheme } from "@/hooks/use-theme";
+import {
+  Phone,
+  Key,
+  Smartphone,
+  Monitor,
+  Sun,
+  Moon,
+  Palette,
+} from "lucide-react";
 
 // Format-only E.164 check, mirrored from the server-side validation
 // (see UpdateMyProfileBody in the API spec) so the form can show an inline
@@ -81,6 +91,7 @@ export default function Settings() {
   const updateProfile = useUpdateMyProfile();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
 
   // --- Name + phone: plain profile fields on this app's own users table.
   // No Clerk routing, no SMS/OTP verification — see PATCH /users/me.
@@ -221,8 +232,9 @@ export default function Settings() {
         className="flex-1 flex flex-col overflow-hidden min-h-0"
       >
         <div className="flex-shrink-0 px-6 md:px-10 max-w-2xl mx-auto w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="appearance">Appearance</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
         </div>
@@ -295,6 +307,60 @@ export default function Settings() {
                     {isSavingProfile ? "Saving..." : "Save Profile"}
                   </Button>
                 </form>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent
+          value="appearance"
+          className="flex-1 overflow-y-auto min-h-0 mt-0"
+        >
+          <div className="px-6 md:px-10 py-4 max-w-2xl mx-auto w-full space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-serif text-lg flex items-center gap-2">
+                  <Palette className="w-4 h-4" /> Appearance
+                </CardTitle>
+                <CardDescription>
+                  Choose how Mavik Connect looks on this device.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ToggleGroup
+                  type="single"
+                  value={theme}
+                  onValueChange={(value) => {
+                    if (value) setTheme(value as "light" | "dark" | "system");
+                  }}
+                  className="justify-start gap-2"
+                >
+                  <ToggleGroupItem
+                    value="light"
+                    aria-label="Light theme"
+                    className="gap-1.5 px-4 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                  >
+                    <Sun className="w-4 h-4" /> Light
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="dark"
+                    aria-label="Dark theme"
+                    className="gap-1.5 px-4 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                  >
+                    <Moon className="w-4 h-4" /> Dark
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="system"
+                    aria-label="Match system theme"
+                    className="gap-1.5 px-4 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                  >
+                    <Monitor className="w-4 h-4" /> System
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                <p className="text-xs text-muted-foreground mt-3">
+                  "System" follows your device's light/dark setting
+                  automatically.
+                </p>
               </CardContent>
             </Card>
           </div>

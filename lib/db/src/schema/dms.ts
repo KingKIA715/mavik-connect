@@ -36,6 +36,14 @@ export const dmThreadsTable = pgTable(
     // list independently of the other. Null means "not pinned".
     userAPinnedAt: timestamp("user_a_pinned_at", { withTimezone: true }),
     userBPinnedAt: timestamp("user_b_pinned_at", { withTimezone: true }),
+    // Muting, same per-side convention: each participant can silence
+    // notifications for this thread independently of the other, without
+    // affecting whether they can still send/receive messages. Null means
+    // "not muted". (Timestamp rather than a boolean only to match the
+    // existing pinned/read-receipt columns' style in this table — the value
+    // itself isn't read for anything beyond "is it set".)
+    userAMutedAt: timestamp("user_a_muted_at", { withTimezone: true }),
+    userBMutedAt: timestamp("user_b_muted_at", { withTimezone: true }),
     // Message-request flow: userAId/userBId are stored in canonical sorted
     // order (see comment above) so they can't tell us who *started* the
     // conversation — initiatorId tracks that separately. Nullable because

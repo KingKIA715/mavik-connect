@@ -6,11 +6,13 @@ import {
   useCreateGroup,
   useSetGroupKey,
   useSetGroupPinned,
+  useSetGroupMuted,
   getListGroupsQueryKey,
   useListDmThreads,
   useCreateDmThread,
   useSetDmKey,
   useSetDmThreadPinned,
+  useSetDmThreadMuted,
   useGetMyProfile,
   useSearchUsersByName,
   getSearchUsersByNameQueryKey,
@@ -32,7 +34,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Users, MessageCircle, Pin, PinOff } from "lucide-react";
+import {
+  Plus,
+  Users,
+  MessageCircle,
+  Pin,
+  PinOff,
+  Bell,
+  BellOff,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
   useEncryption,
@@ -89,9 +99,11 @@ export function ChatListSidebar({
   const createGroup = useCreateGroup();
   const setGroupKey = useSetGroupKey();
   const setGroupPinned = useSetGroupPinned();
+  const setGroupMuted = useSetGroupMuted();
   const createDmThread = useCreateDmThread();
   const setDmKey = useSetDmKey();
   const setDmThreadPinned = useSetDmThreadPinned();
+  const setDmThreadMuted = useSetDmThreadMuted();
   const queryClient = useQueryClient();
   const identity = useEncryption();
   const { toast } = useToast();
@@ -125,6 +137,42 @@ export function ChatListSidebar({
     e.stopPropagation();
     setDmThreadPinned.mutate(
       { threadId, data: { pinned: !currentlyPinned } },
+      {
+        onSuccess: () =>
+          queryClient.invalidateQueries({
+            queryKey: getListDmThreadsQueryKey(),
+          }),
+      },
+    );
+  };
+
+  const handleToggleGroupMuted = (
+    e: React.MouseEvent,
+    groupId: string,
+    currentlyMuted: boolean,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setGroupMuted.mutate(
+      { groupId, data: { muted: !currentlyMuted } },
+      {
+        onSuccess: () =>
+          queryClient.invalidateQueries({
+            queryKey: getListGroupsQueryKey(),
+          }),
+      },
+    );
+  };
+
+  const handleToggleThreadMuted = (
+    e: React.MouseEvent,
+    threadId: string,
+    currentlyMuted: boolean,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDmThreadMuted.mutate(
+      { threadId, data: { muted: !currentlyMuted } },
       {
         onSuccess: () =>
           queryClient.invalidateQueries({
@@ -291,6 +339,9 @@ export function ChatListSidebar({
                           {group.isPinned && (
                             <Pin className="w-3 h-3 text-primary/70 flex-shrink-0 fill-current" />
                           )}
+                          {group.isMuted && (
+                            <BellOff className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                          )}
                           {group.name}
                         </span>
                         {group.lastMessageAt && (
@@ -317,6 +368,21 @@ export function ChatListSidebar({
                         )}
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={(e) =>
+                        handleToggleGroupMuted(e, group.id, group.isMuted)
+                      }
+                      className={`flex-shrink-0 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-opacity ${group.isMuted ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"}`}
+                      aria-label={group.isMuted ? "Unmute group" : "Mute group"}
+                      title={group.isMuted ? "Unmute" : "Mute notifications"}
+                    >
+                      {group.isMuted ? (
+                        <BellOff className="w-4 h-4" />
+                      ) : (
+                        <Bell className="w-4 h-4" />
+                      )}
+                    </button>
                     <button
                       type="button"
                       onClick={(e) =>
@@ -378,6 +444,9 @@ export function ChatListSidebar({
                         {thread.isPinned && (
                           <Pin className="w-3 h-3 text-primary/70 flex-shrink-0 fill-current" />
                         )}
+                        {thread.isMuted && (
+                          <BellOff className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                        )}
                         {thread.otherUserName}
                         {isIncomingRequest && (
                           <span className="flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 rounded-full px-1.5 py-0.5">
@@ -412,6 +481,25 @@ export function ChatListSidebar({
                       )}
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={(e) =>
+                      handleToggleThreadMuted(e, thread.id, thread.isMuted)
+                    }
+                    className={`flex-shrink-0 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-opacity ${thread.isMuted ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"}`}
+                    aria-label={
+                      thread.isMuted
+                        ? "Unmute conversation"
+                        : "Mute conversation"
+                    }
+                    title={thread.isMuted ? "Unmute" : "Mute notifications"}
+                  >
+                    {thread.isMuted ? (
+                      <BellOff className="w-4 h-4" />
+                    ) : (
+                      <Bell className="w-4 h-4" />
+                    )}
+                  </button>
                   <button
                     type="button"
                     onClick={(e) =>

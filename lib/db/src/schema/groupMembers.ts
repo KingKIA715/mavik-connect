@@ -31,6 +31,11 @@ export const groupMembersTable = pgTable(
     // Null means "not pinned". Per-member (not a group-wide setting) since
     // pinning is a personal organizational preference, not shared state.
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+    // When this member muted notifications for this group. Null means "not
+    // muted". Per-member, same reasoning as pinnedAt — muting is a personal
+    // preference and never affects whether the member can send/receive
+    // messages, only whether this app would surface notifications for them.
+    mutedAt: timestamp("muted_at", { withTimezone: true }),
   },
   (table) => [primaryKey({ columns: [table.groupId, table.userId] })],
 );

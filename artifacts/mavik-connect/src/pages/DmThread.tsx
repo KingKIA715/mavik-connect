@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, Fragment } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -10,6 +10,7 @@ import {
   useSetDmKey,
   useRequestDmKeyAccess,
   useMarkDmThreadRead,
+  useSetDmThreadMuted,
   useDeleteDmThread,
   useRespondToDmThread,
   useToggleDmMessageReaction,
@@ -38,6 +39,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft,
@@ -49,6 +51,8 @@ import {
   FileText,
   Phone,
   Video,
+  Bell,
+  BellOff,
   MoreVertical,
   Pencil,
   Trash2,
@@ -82,6 +86,18 @@ const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB — see ChatRoom.tsx for why
 const MAX_RECORDING_SECONDS = 120;
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+function UnreadDivider() {
+  return (
+    <div className="flex items-center gap-3 my-3">
+      <div className="h-px flex-1 bg-primary/30" />
+      <span className="text-xs font-medium text-primary uppercase tracking-wide">
+        New messages
+      </span>
+      <div className="h-px flex-1 bg-primary/30" />
+    </div>
+  );
+}
 
 function formatDuration(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -123,6 +139,7 @@ export default function DmThread() {
   const setDmKey = useSetDmKey();
   const requestDmKeyAccess = useRequestDmKeyAccess();
   const markThreadRead = useMarkDmThreadRead();
+  const setDmThreadMuted = useSetDmThreadMuted();
   const deleteDmThread = useDeleteDmThread();
   const respondToDmThread = useRespondToDmThread();
   const [isRespondingToRequest, setIsRespondingToRequest] = useState(false);
@@ -177,6 +194,7 @@ export default function DmThread() {
   const [decrypted, setDecrypted] = useState<Record<string, string>>({});
   const [fileUrls, setFileUrls] = useState<Record<string, string>>({});
   const [isUploading, setIsUploading] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(
@@ -186,6 +204,10 @@ export default function DmThread() {
     useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [lightboxImage, setLightboxImage] = useState<{
+    url: string;
+    name: string;
+  } | null>(null);
   const [isOtherTyping, setIsOtherTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -445,6 +467,26 @@ export default function DmThread() {
     );
   };
 
+  // Captured once, the first time the thread loads — not re-read after
+  // markThreadRead fires below, so the "New messages" divider doesn't
+  // disappear mid-session (e.g. on window refocus re-fetching the thread).
+  const initialMyLastReadAtRef = useRef<string | null | undefined>(undefined);
+  if (thread && initialMyLastReadAtRef.current === undefined) {
+    initialMyLastReadAtRef.current = thread.myLastReadAt ?? null;
+  }
+  const firstUnreadMessageId = useMemo(() => {
+    const lastRead = initialMyLastReadAtRef.current;
+    if (lastRead === undefined || !messages || messages.length === 0)
+      return null;
+    const lastReadTime = lastRead ? new Date(lastRead).getTime() : 0;
+    const firstUnread = messages.find(
+      (m) =>
+        m.senderId !== profile?.id &&
+        new Date(m.createdAt).getTime() > lastReadTime,
+    );
+    return firstUnread?.id ?? null;
+  }, [messages, profile?.id]);
+
   // Mark the thread read whenever we're looking at it and messages are
   // loaded (covers first open and every new incoming message). Also powers
   // the sidebar's unread badge, which reads the same lastReadAt server-side.
@@ -578,10 +620,25 @@ export default function DmThread() {
     };
   }, [dmKey, messages]);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !threadId || !dmKey || !canSendMessage) return;
+  const handleToggleThreadMuted = () => {
+    if (!threadId || !thread) return;
+    setDmThreadMuted.mutate(
+      { threadId, data: { muted: !thread.isMuted } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({
+            queryKey: getGetDmThreadQueryKey(threadId),
+          });
+          queryClient.invalidateQueries({
+            queryKey: getListDmThreadsQueryKey(),
+          });
+        },
+      },
+    );
+  };
+
+  const uploadFile = async (file: File) => {
+    if (!threadId || !dmKey || !canSendMessage) return;
 
     if (file.size > MAX_FILE_SIZE) {
       toast({
@@ -614,6 +671,50 @@ export default function DmThread() {
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) await uploadFile(file);
+  };
+
+  // Drag-and-drop: dropping a file anywhere over the thread uploads it,
+  // same validation/path as the attach button (uploadFile above).
+  const dragCounterRef = useRef(0);
+  const handleDragEnter = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    setIsDraggingFile(true);
+  };
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) setIsDraggingFile(false);
+  };
+  const handleDrop = async (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDraggingFile(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) await uploadFile(file);
+  };
+
+  // Paste-to-upload: pasting a copied image (e.g. a screenshot) into the
+  // composer uploads it the same way as the attach button, instead of
+  // pasting nothing (there's no plaintext to paste from an image).
+  const handleComposerPaste = async (e: React.ClipboardEvent) => {
+    const file = Array.from(e.clipboardData.files)[0];
+    if (!file) return;
+    e.preventDefault();
+    await uploadFile(file);
   };
 
   const handleStartRecording = async () => {
@@ -785,9 +886,23 @@ export default function DmThread() {
   if (!thread) return <div className="p-10">Conversation not found</div>;
 
   return (
-    <div className="flex flex-col h-full bg-[#FAFAFA]">
+    <div
+      className="flex flex-col h-full bg-background relative"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDraggingFile && (
+        <div className="absolute inset-0 z-30 bg-primary/10 border-4 border-dashed border-primary rounded-lg flex items-center justify-center pointer-events-none">
+          <div className="bg-card shadow-lg rounded-xl px-6 py-4 flex items-center gap-2 text-primary font-medium">
+            <Paperclip className="w-5 h-5" />
+            Drop to send
+          </div>
+        </div>
+      )}
       {/* Header */}
-      <header className="flex-none h-16 border-b border-border bg-white px-3 sm:px-6 flex items-center justify-between shadow-sm z-10 gap-2">
+      <header className="flex-none h-16 border-b border-border bg-card px-3 sm:px-6 flex items-center justify-between shadow-sm z-10 gap-2">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <Link href="/app" className="md:hidden flex-shrink-0">
             <Button
@@ -835,6 +950,27 @@ export default function DmThread() {
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="rounded-full flex-shrink-0"
+            onClick={handleToggleThreadMuted}
+            disabled={setDmThreadMuted.isPending}
+            aria-label={
+              thread.isMuted ? "Unmute conversation" : "Mute conversation"
+            }
+            title={
+              thread.isMuted ? "Unmute notifications" : "Mute notifications"
+            }
+          >
+            {thread.isMuted ? (
+              <BellOff className="w-4 h-4" />
+            ) : (
+              <Bell className="w-4 h-4" />
+            )}
+          </Button>
+
           <Link href={`/app/dms/${threadId}/call?mode=voice`}>
             <Button
               variant="outline"
@@ -897,7 +1033,7 @@ export default function DmThread() {
       </header>
 
       {isSearchOpen && (
-        <div className="flex-none border-b border-border bg-white px-3 sm:px-6 py-2.5">
+        <div className="flex-none border-b border-border bg-card px-3 sm:px-6 py-2.5">
           <div className="max-w-3xl mx-auto flex items-center gap-2">
             <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <Input
@@ -932,7 +1068,7 @@ export default function DmThread() {
               <Button
                 size="sm"
                 variant="outline"
-                className="rounded-full flex-shrink-0 bg-white"
+                className="rounded-full flex-shrink-0 bg-card"
                 disabled={requestDmKeyAccess.isPending}
                 onClick={() => {
                   requestDmKeyAccess.mutate({ threadId: threadId! });
@@ -973,261 +1109,270 @@ export default function DmThread() {
               if (matchingMessageIds && !matchingMessageIds.has(msg.id))
                 return null;
 
+              const showUnreadDivider = msg.id === firstUnreadMessageId;
+
               return (
-                <div
-                  key={msg.id}
-                  className={`flex gap-2 group ${isMe ? "justify-end" : "justify-start"}`}
-                >
-                  {!isMe && (
-                    <div className="w-8 flex-shrink-0">
-                      {showAvatar && (
-                        <Avatar className="w-8 h-8 border shadow-sm">
-                          {msg.senderAvatarUrl && (
-                            <AvatarImage src={msg.senderAvatarUrl} />
-                          )}
-                          <AvatarFallback className="bg-secondary text-secondary-foreground text-xs">
-                            {msg.senderName.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-                    </div>
-                  )}
-
-                  {isMe && !msg.deletedAt && editingMessageId !== msg.id && (
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-end pb-6">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="w-7 h-7 rounded-full text-muted-foreground"
-                            aria-label="Message actions"
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {msg.type === "text" && (
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setEditingMessageId(msg.id);
-                                setEditDraft(decrypted[msg.id] ?? "");
-                              }}
-                            >
-                              <Pencil className="w-4 h-4 mr-2" /> Edit
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setDeletingMessageId(msg.id)}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  )}
-
+                <Fragment key={msg.id}>
+                  {showUnreadDivider && <UnreadDivider />}
                   <div
-                    className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-[75%]`}
+                    className={`flex gap-2 group ${isMe ? "justify-end" : "justify-start"}`}
                   >
-                    {!msg.deletedAt && msg.replyTo && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const target = document.getElementById(
-                            `dm-message-${msg.replyTo!.id}`,
-                          );
-                          target?.scrollIntoView({
-                            behavior: "smooth",
-                            block: "center",
-                          });
-                        }}
-                        className={`mb-1 max-w-full text-left border-l-2 border-primary/40 bg-muted/40 rounded-md px-2.5 py-1.5 text-xs hover:bg-muted/60 transition-colors ${isMe ? "self-end" : "self-start"}`}
-                      >
-                        <div className="font-medium text-primary/80">
-                          {msg.replyTo.senderId === profile?.id
-                            ? "You"
-                            : msg.replyTo.senderName}
-                        </div>
-                        <div className="text-muted-foreground truncate max-w-[220px]">
-                          {msg.replyTo.deletedAt
-                            ? "This message was deleted"
-                            : msg.replyTo.type === "file"
-                              ? `📎 ${msg.replyTo.fileName ?? "File"}`
-                              : msg.replyTo.type === "voice"
-                                ? "🎤 Voice message"
-                                : (replyPreviewDecrypted[msg.replyTo.id] ??
-                                  "…")}
-                        </div>
-                      </button>
+                    {!isMe && (
+                      <div className="w-8 flex-shrink-0">
+                        {showAvatar && (
+                          <Avatar className="w-8 h-8 border shadow-sm">
+                            {msg.senderAvatarUrl && (
+                              <AvatarImage src={msg.senderAvatarUrl} />
+                            )}
+                            <AvatarFallback className="bg-secondary text-secondary-foreground text-xs">
+                              {msg.senderName.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+                      </div>
                     )}
-                    {msg.deletedAt ? (
-                      <div
-                        id={`dm-message-${msg.id}`}
-                        className="px-4 py-2.5 rounded-2xl text-sm italic text-muted-foreground bg-muted/50 border border-border"
-                      >
-                        This message was deleted
+
+                    {isMe && !msg.deletedAt && editingMessageId !== msg.id && (
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-end pb-6">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="w-7 h-7 rounded-full text-muted-foreground"
+                              aria-label="Message actions"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {msg.type === "text" && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setEditingMessageId(msg.id);
+                                  setEditDraft(decrypted[msg.id] ?? "");
+                                }}
+                              >
+                                <Pencil className="w-4 h-4 mr-2" /> Edit
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setDeletingMessageId(msg.id)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
-                    ) : msg.type === "file" ? (
-                      <div id={`dm-message-${msg.id}`}>
-                        <FileBubble
-                          isMe={isMe}
-                          fileName={msg.fileName}
-                          mimeType={msg.mimeType}
-                          fileSize={msg.fileSize}
-                          url={fileUrls[msg.id]}
-                          ready={
-                            !!decrypted[msg.id] ||
-                            !isEncryptedPayload(msg.content)
-                          }
-                          keyMissing={dmKeyStatus === "missing"}
-                        />
-                      </div>
-                    ) : msg.type === "voice" ? (
-                      <div id={`dm-message-${msg.id}`}>
-                        <VoiceBubble
-                          isMe={isMe}
-                          durationSeconds={msg.durationSeconds}
-                          url={fileUrls[msg.id]}
-                          ready={
-                            !!decrypted[msg.id] ||
-                            !isEncryptedPayload(msg.content)
-                          }
-                          keyMissing={dmKeyStatus === "missing"}
-                        />
-                      </div>
-                    ) : editingMessageId === msg.id ? (
-                      <form
-                        onSubmit={(e) => handleSaveEdit(e, msg.id)}
-                        className="flex flex-col gap-1.5 w-full min-w-[220px]"
-                      >
-                        <Input
-                          value={editDraft}
-                          onChange={(e) => setEditDraft(e.target.value)}
-                          autoFocus
-                          className="text-sm"
-                        />
-                        <div className="flex gap-2 justify-end">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setEditingMessageId(null)}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            type="submit"
-                            size="sm"
-                            disabled={
-                              !editDraft.trim() || editDmMessage.isPending
-                            }
-                          >
-                            Save
-                          </Button>
+                    )}
+
+                    <div
+                      className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-[75%]`}
+                    >
+                      {!msg.deletedAt && msg.replyTo && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const target = document.getElementById(
+                              `dm-message-${msg.replyTo!.id}`,
+                            );
+                            target?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "center",
+                            });
+                          }}
+                          className={`mb-1 max-w-full text-left border-l-2 border-primary/40 bg-muted/40 rounded-md px-2.5 py-1.5 text-xs hover:bg-muted/60 transition-colors ${isMe ? "self-end" : "self-start"}`}
+                        >
+                          <div className="font-medium text-primary/80">
+                            {msg.replyTo.senderId === profile?.id
+                              ? "You"
+                              : msg.replyTo.senderName}
+                          </div>
+                          <div className="text-muted-foreground truncate max-w-[220px]">
+                            {msg.replyTo.deletedAt
+                              ? "This message was deleted"
+                              : msg.replyTo.type === "file"
+                                ? `📎 ${msg.replyTo.fileName ?? "File"}`
+                                : msg.replyTo.type === "voice"
+                                  ? "🎤 Voice message"
+                                  : (replyPreviewDecrypted[msg.replyTo.id] ??
+                                    "…")}
+                          </div>
+                        </button>
+                      )}
+                      {msg.deletedAt ? (
+                        <div
+                          id={`dm-message-${msg.id}`}
+                          className="px-4 py-2.5 rounded-2xl text-sm italic text-muted-foreground bg-muted/50 border border-border"
+                        >
+                          This message was deleted
                         </div>
-                      </form>
-                    ) : (
-                      <div
-                        id={`dm-message-${msg.id}`}
-                        className={`
+                      ) : msg.type === "file" ? (
+                        <div id={`dm-message-${msg.id}`}>
+                          <FileBubble
+                            isMe={isMe}
+                            fileName={msg.fileName}
+                            mimeType={msg.mimeType}
+                            fileSize={msg.fileSize}
+                            url={fileUrls[msg.id]}
+                            ready={
+                              !!decrypted[msg.id] ||
+                              !isEncryptedPayload(msg.content)
+                            }
+                            keyMissing={dmKeyStatus === "missing"}
+                            onImageClick={(url, name) =>
+                              setLightboxImage({ url, name })
+                            }
+                          />
+                        </div>
+                      ) : msg.type === "voice" ? (
+                        <div id={`dm-message-${msg.id}`}>
+                          <VoiceBubble
+                            isMe={isMe}
+                            durationSeconds={msg.durationSeconds}
+                            url={fileUrls[msg.id]}
+                            ready={
+                              !!decrypted[msg.id] ||
+                              !isEncryptedPayload(msg.content)
+                            }
+                            keyMissing={dmKeyStatus === "missing"}
+                          />
+                        </div>
+                      ) : editingMessageId === msg.id ? (
+                        <form
+                          onSubmit={(e) => handleSaveEdit(e, msg.id)}
+                          className="flex flex-col gap-1.5 w-full min-w-[220px]"
+                        >
+                          <Input
+                            value={editDraft}
+                            onChange={(e) => setEditDraft(e.target.value)}
+                            autoFocus
+                            className="text-sm"
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setEditingMessageId(null)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="submit"
+                              size="sm"
+                              disabled={
+                                !editDraft.trim() || editDmMessage.isPending
+                              }
+                            >
+                              Save
+                            </Button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div
+                          id={`dm-message-${msg.id}`}
+                          className={`
                         px-4 py-2.5 rounded-2xl shadow-sm text-sm
                         ${
                           isMe
                             ? "bg-primary text-primary-foreground rounded-tr-sm"
-                            : "bg-white border border-border text-foreground rounded-tl-sm"
+                            : "bg-card border border-border text-foreground rounded-tl-sm"
                         }
                       `}
-                      >
-                        {isEncryptedPayload(msg.content)
-                          ? (decrypted[msg.id] ??
-                            (dmKeyStatus === "missing"
-                              ? "🔒 Waiting for access to decrypt"
-                              : "🔒 Decrypting…"))
-                          : msg.content}
-                      </div>
-                    )}
-                    <span className="text-[10px] text-muted-foreground/60 mt-1 px-1 flex items-center gap-1">
-                      {format(new Date(msg.createdAt), "h:mm a")}
-                      {msg.editedAt && !msg.deletedAt && <span>(edited)</span>}
-                      {isLastMine &&
-                        (isSeen ? (
-                          <span className="flex items-center gap-0.5 text-primary/70">
-                            <CheckCheck className="w-3.5 h-3.5" /> Seen
-                          </span>
-                        ) : (
-                          <Check className="w-3.5 h-3.5" />
-                        ))}
-                      {!msg.deletedAt && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setReplyingTo(msg);
-                            setEditingMessageId(null);
-                            contentInputRef.current?.focus();
-                          }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 text-muted-foreground hover:text-foreground"
-                          aria-label="Reply"
                         >
-                          <Reply className="w-3.5 h-3.5" />
-                        </button>
+                          {isEncryptedPayload(msg.content)
+                            ? (decrypted[msg.id] ??
+                              (dmKeyStatus === "missing"
+                                ? "🔒 Waiting for access to decrypt"
+                                : "🔒 Decrypting…"))
+                            : msg.content}
+                        </div>
                       )}
-                      {!msg.deletedAt && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 text-muted-foreground hover:text-foreground"
-                              aria-label="React"
-                            >
-                              <Smile className="w-3.5 h-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            align={isMe ? "end" : "start"}
-                            className="flex gap-1 p-1.5 w-auto"
-                          >
-                            {QUICK_REACTIONS.map((emoji) => (
-                              <button
-                                key={emoji}
-                                type="button"
-                                className="text-lg hover:scale-125 transition-transform px-1"
-                                onClick={() =>
-                                  handleToggleReaction(msg.id, emoji)
-                                }
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </span>
-                    {msg.reactions.length > 0 && (
-                      <div
-                        className={`flex flex-wrap gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}
-                      >
-                        {msg.reactions.map((r) => (
+                      <span className="text-[10px] text-muted-foreground/60 mt-1 px-1 flex items-center gap-1">
+                        {format(new Date(msg.createdAt), "h:mm a")}
+                        {msg.editedAt && !msg.deletedAt && (
+                          <span>(edited)</span>
+                        )}
+                        {isLastMine &&
+                          (isSeen ? (
+                            <span className="flex items-center gap-0.5 text-primary/70">
+                              <CheckCheck className="w-3.5 h-3.5" /> Seen
+                            </span>
+                          ) : (
+                            <Check className="w-3.5 h-3.5" />
+                          ))}
+                        {!msg.deletedAt && (
                           <button
-                            key={r.emoji}
                             type="button"
-                            onClick={() =>
-                              handleToggleReaction(msg.id, r.emoji)
-                            }
-                            className={`text-xs px-1.5 py-0.5 rounded-full border transition-colors ${
-                              r.userIds.includes(profile?.id ?? "")
-                                ? "bg-primary/10 border-primary/30 text-primary"
-                                : "bg-white border-border text-muted-foreground hover:bg-muted/50"
-                            }`}
+                            onClick={() => {
+                              setReplyingTo(msg);
+                              setEditingMessageId(null);
+                              contentInputRef.current?.focus();
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 text-muted-foreground hover:text-foreground"
+                            aria-label="Reply"
                           >
-                            {r.emoji} {r.userIds.length}
+                            <Reply className="w-3.5 h-3.5" />
                           </button>
-                        ))}
-                      </div>
-                    )}
+                        )}
+                        {!msg.deletedAt && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 text-muted-foreground hover:text-foreground"
+                                aria-label="React"
+                              >
+                                <Smile className="w-3.5 h-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align={isMe ? "end" : "start"}
+                              className="flex gap-1 p-1.5 w-auto"
+                            >
+                              {QUICK_REACTIONS.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  className="text-lg hover:scale-125 transition-transform px-1"
+                                  onClick={() =>
+                                    handleToggleReaction(msg.id, emoji)
+                                  }
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </span>
+                      {msg.reactions.length > 0 && (
+                        <div
+                          className={`flex flex-wrap gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}
+                        >
+                          {msg.reactions.map((r) => (
+                            <button
+                              key={r.emoji}
+                              type="button"
+                              onClick={() =>
+                                handleToggleReaction(msg.id, r.emoji)
+                              }
+                              className={`text-xs px-1.5 py-0.5 rounded-full border transition-colors ${
+                                r.userIds.includes(profile?.id ?? "")
+                                  ? "bg-primary/10 border-primary/30 text-primary"
+                                  : "bg-card border-border text-muted-foreground hover:bg-muted/50"
+                              }`}
+                            >
+                              {r.emoji} {r.userIds.length}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                </Fragment>
               );
             })
           )}
@@ -1235,7 +1380,7 @@ export default function DmThread() {
       </div>
 
       {/* Composer */}
-      <div className="flex-none px-4 pt-2 bg-white">
+      <div className="flex-none px-4 pt-2 bg-card">
         {isOtherTyping && (
           <div className="max-w-3xl mx-auto text-xs text-muted-foreground italic px-2 pb-1">
             {thread.otherUserName} is typing…
@@ -1269,7 +1414,7 @@ export default function DmThread() {
           </div>
         )}
       </div>
-      <div className="flex-none p-4 pt-0 bg-white border-t border-border shadow-[0_-4px_20px_-15px_rgba(0,0,0,0.1)]">
+      <div className="flex-none p-4 pt-0 bg-card border-t border-border shadow-[0_-4px_20px_-15px_rgba(0,0,0,0.1)]">
         {isIncomingPendingRequest ? (
           <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 bg-muted/40 rounded-xl px-4 py-3">
             <p className="text-sm text-muted-foreground">
@@ -1371,6 +1516,7 @@ export default function DmThread() {
                     setContent(e.target.value);
                     handleTyping();
                   }}
+                  onPaste={handleComposerPaste}
                   placeholder={
                     isUploading
                       ? "Sending file…"
@@ -1457,6 +1603,34 @@ export default function DmThread() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={!!lightboxImage}
+        onOpenChange={(open) => !open && setLightboxImage(null)}
+      >
+        <DialogContent className="max-w-4xl w-fit p-2 bg-transparent border-none shadow-none [&>button]:bg-white/90 [&>button]:rounded-full [&>button]:p-1.5">
+          <DialogTitle className="sr-only">
+            {lightboxImage?.name ?? "Shared image"}
+          </DialogTitle>
+          {lightboxImage && (
+            <div className="flex flex-col items-center gap-3">
+              <img
+                src={lightboxImage.url}
+                alt={lightboxImage.name}
+                className="max-h-[80vh] max-w-full rounded-lg object-contain"
+              />
+              <a
+                href={lightboxImage.url}
+                download={lightboxImage.name}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-black/50 hover:bg-black/70 transition-colors px-3 py-1.5 rounded-full"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download
+              </a>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1469,6 +1643,7 @@ function FileBubble({
   url,
   ready,
   keyMissing,
+  onImageClick,
 }: {
   isMe: boolean;
   fileName?: string | null;
@@ -1477,6 +1652,7 @@ function FileBubble({
   url?: string;
   ready: boolean;
   keyMissing?: boolean;
+  onImageClick?: (url: string, name: string) => void;
 }) {
   const isImage = !!mimeType?.startsWith("image/");
   const sizeLabel =
@@ -1489,7 +1665,7 @@ function FileBubble({
   if (!ready || !url) {
     return (
       <div
-        className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-2 ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-white border border-border text-foreground rounded-tl-sm"}`}
+        className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-2 ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-card border border-border text-foreground rounded-tl-sm"}`}
       >
         <FileText className="w-4 h-4" />
         {fileName ?? "File"} —{" "}
@@ -1500,17 +1676,18 @@ function FileBubble({
 
   if (isImage) {
     return (
-      <a
-        href={url}
-        download={fileName ?? "image"}
-        className="block rounded-2xl overflow-hidden shadow-sm border border-border max-w-xs"
+      <button
+        type="button"
+        onClick={() => onImageClick?.(url, fileName ?? "image")}
+        className="block rounded-2xl overflow-hidden shadow-sm border border-border max-w-xs cursor-zoom-in"
+        aria-label={`View ${fileName ?? "shared image"} full size`}
       >
         <img
           src={url}
           alt={fileName ?? "Shared image"}
           className="w-full h-auto object-cover"
         />
-      </a>
+      </button>
     );
   }
 
@@ -1518,7 +1695,7 @@ function FileBubble({
     <a
       href={url}
       download={fileName ?? "file"}
-      className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-3 hover:opacity-90 transition-opacity ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-white border border-border text-foreground rounded-tl-sm"}`}
+      className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-3 hover:opacity-90 transition-opacity ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-card border border-border text-foreground rounded-tl-sm"}`}
     >
       <FileText className="w-5 h-5 flex-shrink-0" />
       <div className="min-w-0">
@@ -1550,7 +1727,7 @@ function VoiceBubble({
   if (!ready || !url) {
     return (
       <div
-        className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-2 ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-white border border-border text-foreground rounded-tl-sm"}`}
+        className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-2 ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-card border border-border text-foreground rounded-tl-sm"}`}
       >
         <Mic className="w-4 h-4" />
         Voice message —{" "}
@@ -1568,7 +1745,7 @@ function VoiceBubble({
 
   return (
     <div
-      className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-3 min-w-[180px] ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-white border border-border text-foreground rounded-tl-sm"}`}
+      className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm flex items-center gap-3 min-w-[180px] ${isMe ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-card border border-border text-foreground rounded-tl-sm"}`}
     >
       <audio
         ref={audioRef}

@@ -24,4 +24,6 @@ export interface Group {
   unreadCount: number;
   /** Whether the current user has pinned this group to the top of their own chat list. Purely personal — pinning is per-member, not a group-wide setting. */
   isPinned: boolean;
+  /** Whether the current user has muted notifications for this group. Purely personal, like isPinned — never affects sending or receiving messages. */
+  isMuted: boolean;
 }
