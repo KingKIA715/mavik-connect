@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.2.0
  */
-import type { DmThreadStatus } from "./dmThreadStatus";
+import type { DmThreadStatus } from './dmThreadStatus';
 
 export interface DmThread {
   id: string;
@@ -25,9 +25,9 @@ export interface DmThread {
   /** @nullable */
   myLastReadAt?: string | null;
   /**
-   * Used by the current user to compute a "Seen" receipt on their own last message in this thread.
-   * @nullable
-   */
+     * Used by the current user to compute a "Seen" receipt on their own last message in this thread.
+     * @nullable
+     */
   otherUserLastReadAt?: string | null;
   /** Messages from the other participant created after myLastReadAt. */
   unreadCount: number;

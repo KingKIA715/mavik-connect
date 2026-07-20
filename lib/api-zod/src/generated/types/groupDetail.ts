@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.2.0
  */
-import type { GroupMember } from "./groupMember";
+import type { GroupMember } from './groupMember';
 
 export interface GroupDetail {
   id: string;
