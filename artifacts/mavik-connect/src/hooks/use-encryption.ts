@@ -1,15 +1,30 @@
-import { createContext, createElement, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetMyProfile,
   useSetMyPublicKey,
   useGetMyGroupKey,
   useGetMyDmKey,
+  getMyDmKey,
+  setDmKey as setDmKeyApi,
   getGetMyGroupKeyQueryKey,
   getGetMyDmKeyQueryKey,
   getGetMyProfileQueryKey,
 } from "@workspace/api-client-react";
-import { ensureKeyPair, generateGroupKey, unwrapGroupKey, wrapGroupKeyForMember } from "@/lib/crypto";
+import {
+  ensureKeyPair,
+  generateGroupKey,
+  unwrapGroupKey,
+  wrapGroupKeyForMember,
+} from "@/lib/crypto";
 
 const groupKeyCache = new Map<string, CryptoKey>();
 
@@ -41,7 +56,8 @@ export function EncryptionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!profile?.id) return;
     // Already set up (or currently setting up) for this exact profile snapshot — skip.
-    if (doneRef.current === profile.id || inFlightRef.current === profile.id) return;
+    if (doneRef.current === profile.id || inFlightRef.current === profile.id)
+      return;
     inFlightRef.current = profile.id;
 
     ensureKeyPair(profile.id, profile.publicKey, async (publicKey) => {
@@ -60,7 +76,11 @@ export function EncryptionProvider({ children }: { children: ReactNode }) {
       });
   }, [profile?.id, profile?.publicKey, queryClient, setPublicKey]);
 
-  return createElement(EncryptionContext.Provider, { value: identity }, children);
+  return createElement(
+    EncryptionContext.Provider,
+    { value: identity },
+    children,
+  );
 }
 
 /** Returns the current user's encryption identity, or null while it's still being set up. */
@@ -73,11 +93,17 @@ export async function createAndShareGroupKey(params: {
   groupId: string;
   myUserId: string;
   myPublicKey: string;
-  setGroupKey: (args: { groupId: string; data: { userId: string; wrappedKey: string } }) => Promise<unknown>;
+  setGroupKey: (args: {
+    groupId: string;
+    data: { userId: string; wrappedKey: string };
+  }) => Promise<unknown>;
 }): Promise<CryptoKey> {
   const key = await generateGroupKey();
   const wrapped = await wrapGroupKeyForMember(key, params.myPublicKey);
-  await params.setGroupKey({ groupId: params.groupId, data: { userId: params.myUserId, wrappedKey: wrapped } });
+  await params.setGroupKey({
+    groupId: params.groupId,
+    data: { userId: params.myUserId, wrappedKey: wrapped },
+  });
   setCachedGroupKey(params.groupId, key);
   return key;
 }
@@ -88,10 +114,19 @@ export async function shareGroupKeyWithMember(params: {
   groupKey: CryptoKey;
   memberUserId: string;
   memberPublicKey: string;
-  setGroupKey: (args: { groupId: string; data: { userId: string; wrappedKey: string } }) => Promise<unknown>;
+  setGroupKey: (args: {
+    groupId: string;
+    data: { userId: string; wrappedKey: string };
+  }) => Promise<unknown>;
 }): Promise<void> {
-  const wrapped = await wrapGroupKeyForMember(params.groupKey, params.memberPublicKey);
-  await params.setGroupKey({ groupId: params.groupId, data: { userId: params.memberUserId, wrappedKey: wrapped } });
+  const wrapped = await wrapGroupKeyForMember(
+    params.groupKey,
+    params.memberPublicKey,
+  );
+  await params.setGroupKey({
+    groupId: params.groupId,
+    data: { userId: params.memberUserId, wrappedKey: wrapped },
+  });
 }
 
 export type GroupKeyStatus = "loading" | "ready" | "missing";
@@ -101,11 +136,16 @@ export type GroupKeyStatus = "loading" | "ready" | "missing";
  * encryption key. "missing" means no one has shared it with this browser
  * yet (e.g. this device's public key was uploaded after the invite).
  */
-export function useMyGroupKey(groupId: string | undefined, privateKey: CryptoKey | null) {
+export function useMyGroupKey(
+  groupId: string | undefined,
+  privateKey: CryptoKey | null,
+) {
   const [groupKey, setGroupKey] = useState<CryptoKey | null>(() =>
     groupId ? getCachedGroupKey(groupId) : null,
   );
-  const [status, setStatus] = useState<GroupKeyStatus>(groupKey ? "ready" : "loading");
+  const [status, setStatus] = useState<GroupKeyStatus>(
+    groupKey ? "ready" : "loading",
+  );
 
   const { data, isFetched, refetch } = useGetMyGroupKey(groupId ?? "", {
     query: {
@@ -172,11 +212,17 @@ export async function createAndShareDmKey(params: {
   threadId: string;
   myUserId: string;
   myPublicKey: string;
-  setDmKey: (args: { threadId: string; data: { userId: string; wrappedKey: string } }) => Promise<unknown>;
+  setDmKey: (args: {
+    threadId: string;
+    data: { userId: string; wrappedKey: string };
+  }) => Promise<unknown>;
 }): Promise<CryptoKey> {
   const key = await generateGroupKey();
   const wrapped = await wrapGroupKeyForMember(key, params.myPublicKey);
-  await params.setDmKey({ threadId: params.threadId, data: { userId: params.myUserId, wrappedKey: wrapped } });
+  await params.setDmKey({
+    threadId: params.threadId,
+    data: { userId: params.myUserId, wrappedKey: wrapped },
+  });
   setCachedDmKey(params.threadId, key);
   return key;
 }
@@ -187,9 +233,15 @@ export async function shareDmKeyWithParticipant(params: {
   dmKey: CryptoKey;
   participantUserId: string;
   participantPublicKey: string;
-  setDmKey: (args: { threadId: string; data: { userId: string; wrappedKey: string } }) => Promise<unknown>;
+  setDmKey: (args: {
+    threadId: string;
+    data: { userId: string; wrappedKey: string };
+  }) => Promise<unknown>;
 }): Promise<void> {
-  const wrapped = await wrapGroupKeyForMember(params.dmKey, params.participantPublicKey);
+  const wrapped = await wrapGroupKeyForMember(
+    params.dmKey,
+    params.participantPublicKey,
+  );
   await params.setDmKey({
     threadId: params.threadId,
     data: { userId: params.participantUserId, wrappedKey: wrapped },
@@ -197,15 +249,57 @@ export async function shareDmKeyWithParticipant(params: {
 }
 
 /**
+ * Best-effort self-heal for a DM thread where I already hold (or can
+ * reconstruct) the decrypted key, but the other participant doesn't have a
+ * wrapped copy on the server yet. Unlike shareDmKeyWithParticipant above
+ * (which only runs while a specific thread's page happens to be open),
+ * this uses plain fetch calls rather than hooks so it can run from
+ * anywhere — see its caller in ChatListSidebar, which is mounted for as
+ * long as the app is open, not just while a given conversation is on
+ * screen. This is what lets a stuck "missing key" recipient (e.g. someone
+ * who rejected a request and later decides to message back) get
+ * unblocked without the other participant needing to happen to reopen
+ * that exact conversation.
+ *
+ * Returns true if a key was (re)shared, false if there was nothing to do
+ * (I don't hold a key for this thread myself either — nothing I can share).
+ */
+export async function reshareDmKeyIfMissing(params: {
+  threadId: string;
+  myPrivateKey: CryptoKey;
+  otherUserId: string;
+  otherUserPublicKey: string;
+}): Promise<boolean> {
+  let key = getCachedDmKey(params.threadId);
+  if (!key) {
+    const { wrappedKey } = await getMyDmKey(params.threadId);
+    if (!wrappedKey) return false;
+    key = await unwrapGroupKey(wrappedKey, params.myPrivateKey);
+    setCachedDmKey(params.threadId, key);
+  }
+  const wrapped = await wrapGroupKeyForMember(key, params.otherUserPublicKey);
+  await setDmKeyApi(params.threadId, {
+    userId: params.otherUserId,
+    wrappedKey: wrapped,
+  });
+  return true;
+}
+
+/**
  * Loads (and caches) the current user's decrypted copy of a DM thread's
  * encryption key. "missing" means no one has shared it with this browser
  * yet (e.g. the other participant set their public key after being invited).
  */
-export function useMyDmKey(threadId: string | undefined, privateKey: CryptoKey | null) {
+export function useMyDmKey(
+  threadId: string | undefined,
+  privateKey: CryptoKey | null,
+) {
   const [dmKey, setDmKey] = useState<CryptoKey | null>(() =>
     threadId ? getCachedDmKey(threadId) : null,
   );
-  const [status, setStatus] = useState<GroupKeyStatus>(dmKey ? "ready" : "loading");
+  const [status, setStatus] = useState<GroupKeyStatus>(
+    dmKey ? "ready" : "loading",
+  );
 
   const { data, isFetched, refetch } = useGetMyDmKey(threadId ?? "", {
     query: {

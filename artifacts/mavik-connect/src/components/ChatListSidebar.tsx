@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -48,6 +48,7 @@ import {
   useEncryption,
   createAndShareGroupKey,
   createAndShareDmKey,
+  reshareDmKeyIfMissing,
 } from "@/hooks/use-encryption";
 import { useToast } from "@/hooks/use-toast";
 
@@ -107,6 +108,46 @@ export function ChatListSidebar({
   const queryClient = useQueryClient();
   const identity = useEncryption();
   const { toast } = useToast();
+
+  // App-wide self-heal for stuck "missing key" DM threads: if I hold this
+  // thread's key but the other participant doesn't have a wrapped copy on
+  // the server yet, share it — regardless of whether that specific
+  // conversation is currently open. (The DmThread page has its own version
+  // of this for while it's mounted; this one covers every thread in the
+  // list any time the sidebar is, which is effectively "whenever the app
+  // is open".) Most relevant right after someone rejects a message
+  // request and later decides to reply: without this, the reply is stuck
+  // behind a key that only ever got shared if the sender happened to
+  // reopen that exact conversation again.
+  const attemptedReshareRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!identity?.privateKey || !threads) return;
+    for (const thread of threads) {
+      if (thread.otherUserHasEncryptionKey) continue;
+      if (!thread.otherUserPublicKey) continue;
+      if (attemptedReshareRef.current.has(thread.id)) continue;
+      attemptedReshareRef.current.add(thread.id);
+
+      reshareDmKeyIfMissing({
+        threadId: thread.id,
+        myPrivateKey: identity.privateKey,
+        otherUserId: thread.otherUserId,
+        otherUserPublicKey: thread.otherUserPublicKey,
+      })
+        .then((shared) => {
+          if (shared) {
+            queryClient.invalidateQueries({
+              queryKey: getListDmThreadsQueryKey(),
+            });
+          }
+        })
+        .catch(() => {
+          // Best-effort — allow a retry next time the list refreshes
+          // rather than getting permanently stuck on one failed attempt.
+          attemptedReshareRef.current.delete(thread.id);
+        });
+    }
+  }, [identity?.privateKey, threads, queryClient]);
 
   const handleToggleGroupPinned = (
     e: React.MouseEvent,

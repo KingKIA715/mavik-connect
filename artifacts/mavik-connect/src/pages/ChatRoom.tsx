@@ -1344,26 +1344,31 @@ export default function ChatRoom() {
             )}
           </Button>
 
-          <Link href={`/app/groups/${groupId}/call?mode=voice`}>
-            <Button
-              variant="outline"
-              className="rounded-full gap-2 px-2.5 sm:px-4"
-              aria-label="Voice call"
-            >
-              <Phone className="w-4 h-4" />
-              <span className="hidden sm:inline">Voice Call</span>
-            </Button>
-          </Link>
-
-          <Link href={`/app/groups/${groupId}/call`}>
-            <Button
-              className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md gap-2 px-2.5 sm:px-4"
-              aria-label="Video call"
-            >
-              <Video className="w-4 h-4" />
-              <span className="hidden sm:inline">Join Call</span>
-            </Button>
-          </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md gap-2 px-2.5 sm:px-4"
+                aria-label="Call"
+              >
+                <Phone className="w-4 h-4" />
+                <span className="hidden sm:inline">Call</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() =>
+                  navigate(`/app/groups/${groupId}/call?mode=voice`)
+                }
+              >
+                <Phone className="w-4 h-4 mr-2" /> Voice call
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => navigate(`/app/groups/${groupId}/call`)}
+              >
+                <Video className="w-4 h-4 mr-2" /> Video call
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 

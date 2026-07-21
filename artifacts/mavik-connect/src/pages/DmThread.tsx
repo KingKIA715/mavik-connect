@@ -330,8 +330,10 @@ export default function DmThread() {
   }, [threadId, queryClient, onMessageUpdateRef]);
 
   // Live update for the initiator's UI when the recipient accepts/rejects
-  // this thread's message request (see PUT /dms/{threadId}/respond) — no
-  // reload needed to unlock (or lock) the composer.
+  // this thread's message request (see PUT /dms/{threadId}/respond), or
+  // later reopens it by messaging back after a rejection (see the
+  // auto-reopen in POST /dms/{threadId}/messages) — no reload needed to
+  // unlock (or lock) the composer.
   useEffect(() => {
     onDmRequestRespondedRef.current = () => {
       if (!threadId) return;
@@ -833,6 +835,15 @@ export default function DmThread() {
         onSuccess: () => {
           setContent("");
           setReplyingTo(null);
+          // Covers the "I just reopened a rejected thread by messaging
+          // back" case — refresh my own view of thread.status too, not
+          // just rely on the other participant's WS handler.
+          queryClient.invalidateQueries({
+            queryKey: getGetDmThreadQueryKey(threadId),
+          });
+          queryClient.invalidateQueries({
+            queryKey: getListDmThreadsQueryKey(),
+          });
         },
       },
     );
@@ -971,26 +982,29 @@ export default function DmThread() {
             )}
           </Button>
 
-          <Link href={`/app/dms/${threadId}/call?mode=voice`}>
-            <Button
-              variant="outline"
-              className="rounded-full gap-2 px-2.5 sm:px-4"
-              aria-label="Voice call"
-            >
-              <Phone className="w-4 h-4" />
-              <span className="hidden sm:inline">Voice Call</span>
-            </Button>
-          </Link>
-
-          <Link href={`/app/dms/${threadId}/call`}>
-            <Button
-              className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md gap-2 px-2.5 sm:px-4"
-              aria-label="Video call"
-            >
-              <Video className="w-4 h-4" />
-              <span className="hidden sm:inline">Join Call</span>
-            </Button>
-          </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md gap-2 px-2.5 sm:px-4"
+                aria-label="Call"
+              >
+                <Phone className="w-4 h-4" />
+                <span className="hidden sm:inline">Call</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => navigate(`/app/dms/${threadId}/call?mode=voice`)}
+              >
+                <Phone className="w-4 h-4 mr-2" /> Voice call
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => navigate(`/app/dms/${threadId}/call`)}
+              >
+                <Video className="w-4 h-4 mr-2" /> Video call
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Button
             variant="ghost"

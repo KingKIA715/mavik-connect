@@ -854,6 +854,24 @@ router.post(
       return;
     }
 
+    // The non-initiator sending after a rejection means they've changed
+    // their mind and are reaching back out — treat it the same as
+    // accepting: reopen the thread so both sides can send freely again.
+    // (canSendDm already permits this message through; without this, the
+    // *initiator* would stay permanently blocked from ever replying, even
+    // though the other person is now actively messaging them.)
+    if (thread.status === "rejected" && userId !== thread.initiatorId) {
+      await db
+        .update(dmThreadsTable)
+        .set({ status: "accepted" })
+        .where(eq(dmThreadsTable.id, threadId));
+      broadcastToThread(threadId, {
+        type: "dm-request-responded",
+        threadId: String(threadId),
+        status: "accepted",
+      });
+    }
+
     const parsed = SendDmMessageBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
