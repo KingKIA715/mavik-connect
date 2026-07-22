@@ -220,11 +220,8 @@ export default function Settings() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Fixed header: title + overview card + tab switcher never scroll
-          away — kept compact so it leaves as much room as possible for the
-          scrolling tab content below, especially on short/mobile screens. */}
-      <div className="flex-shrink-0 px-6 md:px-10 pt-4 md:pt-6 pb-3 max-w-2xl mx-auto w-full space-y-3">
+    <div className="h-full overflow-y-auto">
+      <div className="px-6 md:px-10 pt-4 md:pt-6 pb-3 max-w-2xl mx-auto w-full space-y-3">
         <h1 className="text-xl sm:text-2xl font-serif font-bold">
           Profile Settings
         </h1>
@@ -255,17 +252,8 @@ export default function Settings() {
         </Card>
       </div>
 
-      {/* Profile vs. Security are separated into tabs — both live on the
-          same page, but the tab bar makes "where's the password field"
-          immediately visible instead of requiring a scroll past the
-          profile form to find it. Each tab panel scrolls independently in
-          the remaining height, so switching tabs doesn't lose your scroll
-          position in the other one. */}
-      <Tabs
-        defaultValue="profile"
-        className="flex-1 flex flex-col overflow-hidden min-h-0"
-      >
-        <div className="flex-shrink-0 px-6 md:px-10 max-w-2xl mx-auto w-full">
+      <Tabs defaultValue="profile">
+        <div className="px-6 md:px-10 max-w-2xl mx-auto w-full">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="appearance">Appearance</TabsTrigger>
@@ -274,10 +262,7 @@ export default function Settings() {
           </TabsList>
         </div>
 
-        <TabsContent
-          value="profile"
-          className="flex-1 overflow-y-auto min-h-0 mt-0"
-        >
+        <TabsContent value="profile" className="mt-0">
           <div className="px-6 md:px-10 py-4 max-w-2xl mx-auto w-full space-y-6">
             {/* Profile — plain fields on this app's own users table. No Clerk
                 routing, no SMS/OTP verification for the phone number. */}
@@ -347,10 +332,7 @@ export default function Settings() {
           </div>
         </TabsContent>
 
-        <TabsContent
-          value="appearance"
-          className="flex-1 overflow-y-auto min-h-0 mt-0"
-        >
+        <TabsContent value="appearance" className="mt-0">
           <div className="px-6 md:px-10 py-4 max-w-2xl mx-auto w-full space-y-6">
             <Card>
               <CardHeader>
@@ -401,10 +383,7 @@ export default function Settings() {
           </div>
         </TabsContent>
 
-        <TabsContent
-          value="notifications"
-          className="flex-1 overflow-y-auto min-h-0 mt-0"
-        >
+        <TabsContent value="notifications" className="mt-0">
           <div className="px-6 md:px-10 py-4 max-w-2xl mx-auto w-full space-y-6">
             <Card>
               <CardHeader>
@@ -451,10 +430,7 @@ export default function Settings() {
           </div>
         </TabsContent>
 
-        <TabsContent
-          value="security"
-          className="flex-1 overflow-y-auto min-h-0 mt-0"
-        >
+        <TabsContent value="security" className="mt-0">
           <div className="px-6 md:px-10 py-4 max-w-2xl mx-auto w-full space-y-6">
             {/* Password */}
             <Card>
