@@ -18,3 +18,10 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.production]
+VAPID_PRIVATE_KEY = "J4gsFQ6PdwCyqGFUmg6y022HJ1RyPqgEFVLi5NGGB1U"
+VAPID_PUBLIC_KEY = "BM9keAq9ib1BUXA8Yk8vq85BMt4yQtQZfHc9JSLQx5CPOKQfGHzyReFF4Rym-IjpJq5umGuw1ioDlA0EJ4ZcagI"
+VAPID_SUBJECT = "mailto:support@mavikconnect.com"
