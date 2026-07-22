@@ -254,11 +254,11 @@ export default function Settings() {
 
       <Tabs defaultValue="profile">
         <div className="px-6 md:px-10 max-w-2xl mx-auto w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="profile">Profile</TabsTrigger>
-            <TabsTrigger value="appearance">Appearance</TabsTrigger>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 gap-1 h-auto p-1.5">
+            <TabsTrigger value="profile" className="text-xs sm:text-sm px-2 py-1.5">Profile</TabsTrigger>
+            <TabsTrigger value="appearance" className="text-xs sm:text-sm px-2 py-1.5">Appearance</TabsTrigger>
+            <TabsTrigger value="notifications" className="text-xs sm:text-sm px-2 py-1.5">Notifications</TabsTrigger>
+            <TabsTrigger value="security" className="text-xs sm:text-sm px-2 py-1.5">Security</TabsTrigger>
           </TabsList>
         </div>
 
