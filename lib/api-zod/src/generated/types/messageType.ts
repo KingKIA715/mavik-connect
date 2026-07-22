@@ -14,4 +14,5 @@ export const MessageType = {
   file: 'file',
   voice: 'voice',
   system: 'system',
+  call: 'call',
 } as const;

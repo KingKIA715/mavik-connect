@@ -18,11 +18,13 @@ import {
   useRequestGroupKeyAccess,
   useMarkGroupRead,
   useSetGroupMuted,
+  useJoinGroupCall,
   getListMessagesQueryKey,
   getGetGroupQueryKey,
   getListGroupsQueryKey,
 } from "@workspace/api-client-react";
 import { useWebSocket } from "@/hooks/use-websocket";
+import { markFirstMessageSent } from "@/lib/notification-prompt";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -139,6 +141,45 @@ function renderContentWithMentions(
   });
 }
 
+function CallLogEntry({ content }: { content: string }) {
+  let parsed: {
+    kind?: string;
+    status?: string;
+    durationSeconds?: number;
+  } = {};
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    // Fall through to a generic label below if content is ever malformed.
+  }
+
+  const kindLabel = parsed.kind === "audio" ? "Voice" : "Video";
+  const Icon = parsed.kind === "audio" ? Phone : Video;
+
+  let label: string;
+  if (parsed.status === "declined") {
+    label = `${kindLabel} call declined`;
+  } else if (parsed.status === "missed" || parsed.status === "cancelled") {
+    label = `Missed ${kindLabel.toLowerCase()} call`;
+  } else if (parsed.status === "ended") {
+    const total = parsed.durationSeconds ?? 0;
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
+    label = `${kindLabel} call · ${mins}:${secs.toString().padStart(2, "0")}`;
+  } else {
+    label = `${kindLabel} call`;
+  }
+
+  return (
+    <div className="flex justify-center my-1">
+      <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-full text-center flex items-center gap-1.5">
+        <Icon className="w-3.5 h-3.5" />
+        {label}
+      </span>
+    </div>
+  );
+}
+
 function UnreadDivider() {
   return (
     <div className="flex items-center gap-3 my-3" aria-hidden="false">
@@ -185,6 +226,28 @@ export default function ChatRoom() {
   const requestGroupKeyAccess = useRequestGroupKeyAccess();
   const markGroupRead = useMarkGroupRead();
   const setGroupMuted = useSetGroupMuted();
+  const joinGroupCall = useJoinGroupCall();
+
+  const handleStartCall = (kind: "audio" | "video") => {
+    if (!groupId) return;
+    joinGroupCall.mutate(
+      { groupId, data: { kind } },
+      {
+        onSuccess: ({ callId }) => {
+          navigate(
+            `/app/groups/${groupId}/call?mode=${kind === "audio" ? "voice" : "video"}&callId=${callId}`,
+          );
+        },
+        onError: () => {
+          toast({
+            variant: "destructive",
+            title: "Couldn't start the call",
+            description: "Please try again.",
+          });
+        },
+      },
+    );
+  };
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const identity = useEncryption();
@@ -951,6 +1014,7 @@ export default function ChatRoom() {
           setContent("");
           setReplyingTo(null);
           setMentionQuery(null);
+          markFirstMessageSent();
         },
       },
     );
@@ -1355,16 +1419,10 @@ export default function ChatRoom() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() =>
-                  navigate(`/app/groups/${groupId}/call?mode=voice`)
-                }
-              >
+              <DropdownMenuItem onClick={() => handleStartCall("audio")}>
                 <Phone className="w-4 h-4 mr-2" /> Voice call
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => navigate(`/app/groups/${groupId}/call`)}
-              >
+              <DropdownMenuItem onClick={() => handleStartCall("video")}>
                 <Video className="w-4 h-4 mr-2" /> Video call
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -1477,6 +1535,19 @@ export default function ChatRoom() {
                         {msg.content}
                       </span>
                     </div>
+                  </Fragment>
+                );
+              }
+
+              // Call summaries ("Video call · 12m") are written as plain
+              // (never-encrypted) metadata by the server once a group
+              // call's last participant leaves — see leaveGroupCall on the
+              // backend. Render like a system message, not a bubble.
+              if (msg.type === "call") {
+                return (
+                  <Fragment key={msg.id}>
+                    {showUnreadDivider && <UnreadDivider />}
+                    <CallLogEntry content={msg.content} />
                   </Fragment>
                 );
               }

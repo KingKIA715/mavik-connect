@@ -5,6 +5,7 @@ import {
   messagesTable,
   messageReactionsTable,
   usersTable,
+  groupsTable,
 } from "@workspace/db";
 import {
   ListMessagesResponseItem,
@@ -23,7 +24,8 @@ import {
   isGroupMember,
   getGroupMemberIds,
 } from "../lib/groupAccess";
-import { broadcastToGroup } from "../ws/hub";
+import { broadcastToGroup, isUserOnline } from "../ws/hub";
+import { sendPushToUser } from "../lib/push";
 import { toIso, toIsoOrNull } from "../lib/serialize";
 
 const router: IRouter = Router();
@@ -316,6 +318,22 @@ router.post(
     });
 
     broadcastToGroup(groupId, { type: "message", message: payload });
+
+    // Only to members who aren't currently online (any tab/device) — if
+    // they are, the WS message above already reached them live. Never
+    // include message content, same reasoning as the DM version of this.
+    const [group] = await db
+      .select({ name: groupsTable.name })
+      .from(groupsTable)
+      .where(eq(groupsTable.id, groupId));
+    for (const memberId of memberIds) {
+      if (memberId === userId || isUserOnline(memberId)) continue;
+      void sendPushToUser(memberId, {
+        title: group?.name ?? "Family Group",
+        body: `${sender?.name ?? "Someone"} sent a new message`,
+        url: `/app/groups/${groupId}`,
+      });
+    }
 
     res.status(201).json(payload);
   },

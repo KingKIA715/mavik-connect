@@ -37,6 +37,8 @@ import type {
   GroupMember,
   GroupMemberInput,
   HealthStatus,
+  JoinGroupCallInput,
+  JoinGroupCallResult,
   KeyRotationEntry,
   ListDmMessagesParams,
   ListMessagesParams,
@@ -47,6 +49,7 @@ import type {
   MutedResult,
   PinnedResult,
   PublicKeyInput,
+  PushSubscriptionInput,
   ReadReceipt,
   RespondToDmThreadInput,
   RespondToDmThreadResult,
@@ -59,8 +62,10 @@ import type {
   StartDmCallInput,
   StartDmCallResult,
   ToggleReactionInput,
+  UnsubscribePushInput,
   UpdateMyProfileInput,
-  UserProfile
+  UserProfile,
+  VapidPublicKeyResult
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -467,6 +472,227 @@ export function useGetKeyHistory<TData = Awaited<ReturnType<typeof getKeyHistory
 
 
 
+
+export const getGetVapidPublicKeyUrl = () => {
+
+
+
+
+  return `/api/push/vapid-public-key`
+}
+
+/**
+ * Needed by the browser's PushManager.subscribe() call. May be null if the server doesn't have push configured (e.g. local dev) — the client should treat that as "notifications unavailable" rather than erroring.
+ * @summary Get the server's VAPID public key
+ */
+export const getVapidPublicKey = async ( options?: RequestInit): Promise<VapidPublicKeyResult> => {
+
+  return customFetch<VapidPublicKeyResult>(getGetVapidPublicKeyUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVapidPublicKeyQueryKey = () => {
+    return [
+    `/api/push/vapid-public-key`
+    ] as const;
+    }
+
+
+export const getGetVapidPublicKeyQueryOptions = <TData = Awaited<ReturnType<typeof getVapidPublicKey>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVapidPublicKey>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVapidPublicKeyQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVapidPublicKey>>> = ({ signal }) => getVapidPublicKey({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVapidPublicKey>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVapidPublicKeyQueryResult = NonNullable<Awaited<ReturnType<typeof getVapidPublicKey>>>
+export type GetVapidPublicKeyQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the server's VAPID public key
+ */
+
+export function useGetVapidPublicKey<TData = Awaited<ReturnType<typeof getVapidPublicKey>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVapidPublicKey>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVapidPublicKeyQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSubscribeToPushUrl = () => {
+
+
+
+
+  return `/api/push/subscribe`
+}
+
+/**
+ * Upserted by endpoint — re-subscribing the same browser updates its keys rather than creating a duplicate. A user can have several (one per browser/device).
+ * @summary Register a browser push subscription for the current user
+ */
+export const subscribeToPush = async (pushSubscriptionInput: PushSubscriptionInput, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getSubscribeToPushUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(pushSubscriptionInput)
+  }
+);}
+
+
+
+
+
+export const getSubscribeToPushMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof subscribeToPush>>, TError,{data: BodyType<PushSubscriptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof subscribeToPush>>, TError,{data: BodyType<PushSubscriptionInput>}, TContext> => {
+
+const mutationKey = ['subscribeToPush'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof subscribeToPush>>, {data: BodyType<PushSubscriptionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  subscribeToPush(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubscribeToPushMutationResult = NonNullable<Awaited<ReturnType<typeof subscribeToPush>>>
+    export type SubscribeToPushMutationBody = BodyType<PushSubscriptionInput>
+    export type SubscribeToPushMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Register a browser push subscription for the current user
+ */
+export const useSubscribeToPush = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof subscribeToPush>>, TError,{data: BodyType<PushSubscriptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof subscribeToPush>>,
+        TError,
+        {data: BodyType<PushSubscriptionInput>},
+        TContext
+      > => {
+      return useMutation(getSubscribeToPushMutationOptions(options));
+    }
+
+export const getUnsubscribeFromPushUrl = () => {
+
+
+
+
+  return `/api/push/subscribe`
+}
+
+/**
+ * @summary Remove a browser push subscription
+ */
+export const unsubscribeFromPush = async (unsubscribePushInput: UnsubscribePushInput, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getUnsubscribeFromPushUrl(),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(unsubscribePushInput)
+  }
+);}
+
+
+
+
+
+export const getUnsubscribeFromPushMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unsubscribeFromPush>>, TError,{data: BodyType<UnsubscribePushInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof unsubscribeFromPush>>, TError,{data: BodyType<UnsubscribePushInput>}, TContext> => {
+
+const mutationKey = ['unsubscribeFromPush'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unsubscribeFromPush>>, {data: BodyType<UnsubscribePushInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  unsubscribeFromPush(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnsubscribeFromPushMutationResult = NonNullable<Awaited<ReturnType<typeof unsubscribeFromPush>>>
+    export type UnsubscribeFromPushMutationBody = BodyType<UnsubscribePushInput>
+    export type UnsubscribeFromPushMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove a browser push subscription
+ */
+export const useUnsubscribeFromPush = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unsubscribeFromPush>>, TError,{data: BodyType<UnsubscribePushInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof unsubscribeFromPush>>,
+        TError,
+        {data: BodyType<UnsubscribePushInput>},
+        TContext
+      > => {
+      return useMutation(getUnsubscribeFromPushMutationOptions(options));
+    }
 
 export const getSearchUserByEmailUrl = (params: SearchUserByEmailParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -1519,6 +1745,153 @@ export const useSetGroupMuted = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getSetGroupMutedMutationOptions(options));
+    }
+
+export const getJoinGroupCallUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/calls/join`
+}
+
+/**
+ * Group calls are a shared room, not a 1:1 ring — unlike DM calls, there's no per-person "missed" tracking, no ring, and no push. If a call is already active for this group, joins that one (no new log entry); otherwise starts a new one. A compact summary ("Video call · 12m") is written into the group's messages once the last participant leaves (see the /leave endpoint).
+ * @summary Join (starting if needed) this group's call
+ */
+export const joinGroupCall = async (groupId: string,
+    joinGroupCallInput: JoinGroupCallInput, options?: RequestInit): Promise<JoinGroupCallResult> => {
+
+  return customFetch<JoinGroupCallResult>(getJoinGroupCallUrl(groupId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(joinGroupCallInput)
+  }
+);}
+
+
+
+
+
+export const getJoinGroupCallMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinGroupCall>>, TError,{groupId: string;data: BodyType<JoinGroupCallInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof joinGroupCall>>, TError,{groupId: string;data: BodyType<JoinGroupCallInput>}, TContext> => {
+
+const mutationKey = ['joinGroupCall'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinGroupCall>>, {groupId: string;data: BodyType<JoinGroupCallInput>}> = (props) => {
+          const {groupId,data} = props ?? {};
+
+          return  joinGroupCall(groupId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type JoinGroupCallMutationResult = NonNullable<Awaited<ReturnType<typeof joinGroupCall>>>
+    export type JoinGroupCallMutationBody = BodyType<JoinGroupCallInput>
+    export type JoinGroupCallMutationError = ErrorType<void>
+
+    /**
+ * @summary Join (starting if needed) this group's call
+ */
+export const useJoinGroupCall = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinGroupCall>>, TError,{groupId: string;data: BodyType<JoinGroupCallInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof joinGroupCall>>,
+        TError,
+        {groupId: string;data: BodyType<JoinGroupCallInput>},
+        TContext
+      > => {
+      return useMutation(getJoinGroupCallMutationOptions(options));
+    }
+
+export const getLeaveGroupCallUrl = (groupId: string,
+    callId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/calls/${callId}/leave`
+}
+
+/**
+ * If this was the last active participant, finalizes the call and writes its duration summary into the group's messages.
+ * @summary Leave this group's call
+ */
+export const leaveGroupCall = async (groupId: string,
+    callId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getLeaveGroupCallUrl(groupId,callId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getLeaveGroupCallMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof leaveGroupCall>>, TError,{groupId: string;callId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof leaveGroupCall>>, TError,{groupId: string;callId: string}, TContext> => {
+
+const mutationKey = ['leaveGroupCall'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof leaveGroupCall>>, {groupId: string;callId: string}> = (props) => {
+          const {groupId,callId} = props ?? {};
+
+          return  leaveGroupCall(groupId,callId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LeaveGroupCallMutationResult = NonNullable<Awaited<ReturnType<typeof leaveGroupCall>>>
+
+    export type LeaveGroupCallMutationError = ErrorType<void>
+
+    /**
+ * @summary Leave this group's call
+ */
+export const useLeaveGroupCall = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof leaveGroupCall>>, TError,{groupId: string;callId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof leaveGroupCall>>,
+        TError,
+        {groupId: string;callId: string},
+        TContext
+      > => {
+      return useMutation(getLeaveGroupCallMutationOptions(options));
     }
 
 export const getRemoveGroupMemberUrl = (groupId: string,

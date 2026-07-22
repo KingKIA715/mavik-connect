@@ -6,3 +6,4 @@ export * from "./groupKeys";
 export * from "./dms";
 export * from "./messageReactions";
 export * from "./keyRotations";
+export * from "./pushSubscriptions";

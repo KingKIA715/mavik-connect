@@ -52,7 +52,8 @@ import {
   myMutedAt,
   canSendDm,
 } from "../lib/dmAccess";
-import { broadcastToThread, sendToUserInThread } from "../ws/hub";
+import { broadcastToThread, sendToUserInThread, isUserOnline } from "../ws/hub";
+import { sendPushToUser } from "../lib/push";
 import { toIso, toIsoOrNull } from "../lib/serialize";
 
 const router: IRouter = Router();
@@ -944,6 +945,26 @@ router.post(
     });
 
     broadcastToThread(threadId, { type: "message", message: payload });
+
+    // Only if they're not already connected (any tab/device) — if they
+    // are, the WS message above already reached them live. Never include
+    // message content — the server doesn't have the plaintext anyway
+    // (E2E encrypted), and wouldn't want to put it in an OS notification
+    // even if it did.
+    const otherUserId =
+      thread.userAId === userId ? thread.userBId : thread.userAId;
+    if (!isUserOnline(otherUserId)) {
+      void sendPushToUser(otherUserId, {
+        title: sender?.name ?? "Family Member",
+        body:
+          message.type === "voice"
+            ? "Sent a voice message"
+            : message.type === "file"
+              ? "Sent a file"
+              : "Sent a new message",
+        url: `/app/dms/${threadId}`,
+      });
+    }
 
     res.status(201).json(payload);
   },

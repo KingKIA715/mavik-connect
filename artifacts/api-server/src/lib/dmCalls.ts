@@ -1,7 +1,14 @@
 import { eq } from "drizzle-orm";
-import { db, dmCallsTable, dmMessagesTable, usersTable } from "@workspace/db";
+import {
+  db,
+  dmCallsTable,
+  dmMessagesTable,
+  dmThreadsTable,
+  usersTable,
+} from "@workspace/db";
 import { SendDmMessageResponse } from "@workspace/api-zod";
 import { broadcastToThread } from "../ws/hub";
+import { sendPushToUser } from "./push";
 import { toIso } from "./serialize";
 
 /** How long an unanswered call rings before it's finalized as "missed". */
@@ -116,4 +123,25 @@ export async function finalizeDmCall(
   });
 
   broadcastToThread(call.threadId, { type: "message", message: payload });
+
+  // Notify the callee the same way a phone would for a call they didn't
+  // pick up — whether it rang out (missed) or the caller hung up first
+  // (cancelled), both look identical from the callee's side. Not sent for
+  // "declined" (they were actively there and made a choice) or "ended"
+  // (they were on the call, no notification needed).
+  if (status === "missed" || status === "cancelled") {
+    const [thread] = await db
+      .select()
+      .from(dmThreadsTable)
+      .where(eq(dmThreadsTable.id, call.threadId));
+    if (thread) {
+      const calleeId =
+        thread.userAId === call.callerId ? thread.userBId : thread.userAId;
+      void sendPushToUser(calleeId, {
+        title: sender?.name ?? "Family Member",
+        body: `Missed ${call.kind === "video" ? "video" : "voice"} call`,
+        url: `/app/dms/${call.threadId}`,
+      });
+    }
+  }
 }

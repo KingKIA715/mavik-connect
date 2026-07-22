@@ -58,6 +58,29 @@ export interface PublicKeyInput {
   publicKey: string;
 }
 
+export interface VapidPublicKeyResult {
+  /** @nullable */
+  publicKey: string | null;
+}
+
+export type PushSubscriptionInputKeys = {
+  /** @minLength 1 */
+  p256dh: string;
+  /** @minLength 1 */
+  auth: string;
+};
+
+export interface PushSubscriptionInput {
+  /** @minLength 1 */
+  endpoint: string;
+  keys: PushSubscriptionInputKeys;
+}
+
+export interface UnsubscribePushInput {
+  /** @minLength 1 */
+  endpoint: string;
+}
+
 export interface UpdateMyProfileInput {
   /** @minLength 1 */
   firstName: string;
@@ -112,6 +135,22 @@ export interface SetMutedInput {
 
 export interface MutedResult {
   isMuted: boolean;
+}
+
+export type JoinGroupCallInputKind = typeof JoinGroupCallInputKind[keyof typeof JoinGroupCallInputKind];
+
+
+export const JoinGroupCallInputKind = {
+  audio: 'audio',
+  video: 'video',
+} as const;
+
+export interface JoinGroupCallInput {
+  kind: JoinGroupCallInputKind;
+}
+
+export interface JoinGroupCallResult {
+  callId: string;
 }
 
 export interface GroupMember {
@@ -200,6 +239,7 @@ export const MessageType = {
   file: 'file',
   voice: 'voice',
   system: 'system',
+  call: 'call',
 } as const;
 
 export interface Message {

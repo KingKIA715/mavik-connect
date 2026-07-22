@@ -21,6 +21,7 @@ import {
   getListDmThreadsQueryKey,
 } from "@workspace/api-client-react";
 import { useThreadWebSocket } from "@/hooks/use-websocket";
+import { markFirstMessageSent } from "@/lib/notification-prompt";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -897,6 +898,7 @@ export default function DmThread() {
         onSuccess: () => {
           setContent("");
           setReplyingTo(null);
+          markFirstMessageSent();
           // Covers the "I just reopened a rejected thread by messaging
           // back" case — refresh my own view of thread.status too, not
           // just rely on the other participant's WS handler.

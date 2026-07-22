@@ -6,6 +6,7 @@ import messagesRouter from "./messages";
 import activityRouter from "./activity";
 import dmsRouter from "./dms";
 import dmCallsRouter from "./dmCalls";
+import pushRouter from "./push";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(messagesRouter);
 router.use(activityRouter);
 router.use(dmsRouter);
 router.use(dmCallsRouter);
+router.use(pushRouter);
 
 export default router;

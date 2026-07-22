@@ -98,6 +98,48 @@ export const GetKeyHistoryResponse = zod.array(GetKeyHistoryResponseItem)
 
 
 /**
+ * Needed by the browser's PushManager.subscribe() call. May be null if the server doesn't have push configured (e.g. local dev) — the client should treat that as "notifications unavailable" rather than erroring.
+ * @summary Get the server's VAPID public key
+ */
+export const GetVapidPublicKeyResponse = zod.object({
+  "publicKey": zod.string().nullable()
+})
+
+
+/**
+ * Upserted by endpoint — re-subscribing the same browser updates its keys rather than creating a duplicate. A user can have several (one per browser/device).
+ * @summary Register a browser push subscription for the current user
+ */
+
+
+
+
+
+export const SubscribeToPushBody = zod.object({
+  "endpoint": zod.string().min(1),
+  "keys": zod.object({
+  "p256dh": zod.string().min(1),
+  "auth": zod.string().min(1)
+})
+})
+
+export const SubscribeToPushResponse = zod.unknown()
+
+
+/**
+ * @summary Remove a browser push subscription
+ */
+
+
+
+export const UnsubscribeFromPushBody = zod.object({
+  "endpoint": zod.string().min(1)
+})
+
+export const UnsubscribeFromPushResponse = zod.unknown()
+
+
+/**
  * Used to start a new DM thread, the same way group invites work. Returns 404 if no registered user matches the given email exactly.
  * @summary Search for a registered user by exact email match
  */
@@ -360,6 +402,35 @@ export const SetGroupMutedResponse = zod.object({
 
 
 /**
+ * Group calls are a shared room, not a 1:1 ring — unlike DM calls, there's no per-person "missed" tracking, no ring, and no push. If a call is already active for this group, joins that one (no new log entry); otherwise starts a new one. A compact summary ("Video call · 12m") is written into the group's messages once the last participant leaves (see the /leave endpoint).
+ * @summary Join (starting if needed) this group's call
+ */
+export const JoinGroupCallParams = zod.object({
+  "groupId": zod.coerce.string()
+})
+
+export const JoinGroupCallBody = zod.object({
+  "kind": zod.enum(['audio', 'video'])
+})
+
+export const JoinGroupCallResponse = zod.object({
+  "callId": zod.string()
+})
+
+
+/**
+ * If this was the last active participant, finalizes the call and writes its duration summary into the group's messages.
+ * @summary Leave this group's call
+ */
+export const LeaveGroupCallParams = zod.object({
+  "groupId": zod.coerce.string(),
+  "callId": zod.coerce.string()
+})
+
+export const LeaveGroupCallResponse = zod.unknown()
+
+
+/**
  * Any member can remove themselves (leave the group). Removing someone else requires being the group's creator. Either way, a "system" message announcing the departure is inserted into the group's chat history and broadcast live to remaining members.
  * @summary Remove a member from a group, or leave it yourself
  */
@@ -401,7 +472,7 @@ export const ListMessagesResponseItem = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice', 'system']).default(listMessagesResponseTypeDefault),
+  "type": zod.enum(['text', 'file', 'voice', 'system', 'call']).default(listMessagesResponseTypeDefault),
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
@@ -458,7 +529,7 @@ export const SendMessageResponse = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice', 'system']).default(sendMessageResponseTypeDefault),
+  "type": zod.enum(['text', 'file', 'voice', 'system', 'call']).default(sendMessageResponseTypeDefault),
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
@@ -509,7 +580,7 @@ export const EditMessageResponse = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice', 'system']).default(editMessageResponseTypeDefault),
+  "type": zod.enum(['text', 'file', 'voice', 'system', 'call']).default(editMessageResponseTypeDefault),
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
@@ -553,7 +624,7 @@ export const DeleteMessageResponse = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice', 'system']).default(deleteMessageResponseTypeDefault),
+  "type": zod.enum(['text', 'file', 'voice', 'system', 'call']).default(deleteMessageResponseTypeDefault),
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),

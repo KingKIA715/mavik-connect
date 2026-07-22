@@ -8,6 +8,7 @@ import { requireAuth } from "../middlewares/requireAuth";
 // duplicating it.
 import { parseThreadId, canSendDm } from "../lib/dmAccess";
 import { sendToUserGlobal, isUserOnline } from "../ws/hub";
+import { sendPushToUser } from "../lib/push";
 import {
   finalizeDmCall,
   scheduleRingTimeout,
@@ -79,6 +80,17 @@ router.post("/dms/:threadId/calls", async (req, res): Promise<void> => {
     fromName: caller?.name ?? "Family Member",
     fromAvatarUrl: caller?.avatarUrl ?? null,
   });
+
+  // If they're online, the WS ring above already reached them — a push on
+  // top would just be a redundant/confusing extra notification for
+  // something already ringing on screen.
+  if (!isUserOnline(otherUserId)) {
+    void sendPushToUser(otherUserId, {
+      title: caller?.name ?? "Family Member",
+      body: `Incoming ${call.kind === "video" ? "video" : "voice"} call`,
+      url: `/app/dms/${threadId}`,
+    });
+  }
 
   scheduleRingTimeout(call.id);
 

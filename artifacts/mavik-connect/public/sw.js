@@ -22,10 +22,64 @@ self.addEventListener("activate", (event) => {
       .keys()
       .then((keys) =>
         Promise.all(
-          keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)),
+          keys
+            .filter((key) => key !== CACHE_NAME)
+            .map((key) => caches.delete(key)),
         ),
       )
       .then(() => self.clients.claim()),
+  );
+});
+
+// Push notifications. The payload is always generic, never message
+// content — see lib/push.ts on the server: messages are E2E encrypted, so
+// the server never has plaintext to put here even if it wanted to, and
+// wouldn't display it in an OS notification tray regardless.
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    return;
+  }
+
+  const title = payload.title || "Mavik Connect";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: payload.body || "",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { url: payload.url || "/app" },
+      tag: payload.url, // collapses repeat notifications for the same conversation
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL(
+    event.notification.data?.url || "/app",
+    self.registration.scope,
+  ).href;
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        for (const client of clients) {
+          if (client.url === url && "focus" in client) return client.focus();
+        }
+        // Focus any existing app window and navigate it, rather than
+        // always opening a new tab.
+        for (const client of clients) {
+          if ("navigate" in client && "focus" in client) {
+            return client.navigate(url).then(() => client.focus());
+          }
+        }
+        if (self.clients.openWindow) return self.clients.openWindow(url);
+      }),
   );
 });
 

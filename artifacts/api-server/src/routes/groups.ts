@@ -24,6 +24,8 @@ import {
   SetGroupPinnedResponse,
   SetGroupMutedBody,
   SetGroupMutedResponse,
+  JoinGroupCallBody,
+  JoinGroupCallResponse,
   SetGroupAvatarBody,
   SetGroupAvatarResponse,
   ToggleMessageReactionBody,
@@ -33,6 +35,7 @@ import {
 import { requireAuth } from "../middlewares/requireAuth";
 import { keyRequestRateLimit } from "../middlewares/rateLimit";
 import { parseGroupId, isGroupMember } from "../lib/groupAccess";
+import { joinGroupCall, leaveGroupCall } from "../lib/groupCalls";
 import { broadcastToGroup, sendToUser } from "../ws/hub";
 import { toIso, toIsoOrNull } from "../lib/serialize";
 
@@ -555,6 +558,54 @@ router.put("/groups/:groupId/mute", async (req, res): Promise<void> => {
 
   res.json(SetGroupMutedResponse.parse({ isMuted: parsed.data.muted }));
 });
+
+router.post("/groups/:groupId/calls/join", async (req, res): Promise<void> => {
+  const groupId = parseGroupId(req.params.groupId);
+  if (groupId === null) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const parsed = JoinGroupCallBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const userId = req.userId!;
+  const member = await isGroupMember(groupId, userId);
+  if (!member) {
+    res.status(404).json({ error: "Group not found" });
+    return;
+  }
+
+  const callId = await joinGroupCall(groupId, userId, parsed.data.kind);
+
+  res.json(JoinGroupCallResponse.parse({ callId: String(callId) }));
+});
+
+router.post(
+  "/groups/:groupId/calls/:callId/leave",
+  async (req, res): Promise<void> => {
+    const groupId = parseGroupId(req.params.groupId);
+    const callId = parseGroupId(req.params.callId);
+    if (groupId === null || callId === null) {
+      res.status(404).json({ error: "Call not found" });
+      return;
+    }
+
+    const userId = req.userId!;
+    const member = await isGroupMember(groupId, userId);
+    if (!member) {
+      res.status(404).json({ error: "Group not found" });
+      return;
+    }
+
+    await leaveGroupCall(groupId, callId, userId);
+
+    res.json({ ok: true });
+  },
+);
 
 router.post("/groups/:groupId/keys", async (req, res): Promise<void> => {
   const groupId = parseGroupId(req.params.groupId);

@@ -19,12 +19,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Badge } from "@/components/ui/badge";
 import { format, formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/hooks/use-theme";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 import {
   Phone,
   Key,
@@ -33,6 +35,7 @@ import {
   Sun,
   Moon,
   Palette,
+  Bell,
 } from "lucide-react";
 
 // Format-only E.164 check, mirrored from the server-side validation
@@ -92,6 +95,37 @@ export default function Settings() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
+  const {
+    isSupported: pushIsSupported,
+    permission: pushPermission,
+    isSubscribed: pushIsSubscribed,
+    enable: enablePush,
+    disable: disablePush,
+  } = usePushNotifications();
+  const [isTogglingPush, setIsTogglingPush] = useState(false);
+
+  const handleTogglePush = async (checked: boolean) => {
+    setIsTogglingPush(true);
+    try {
+      if (checked) {
+        const ok = await enablePush();
+        if (!ok) {
+          toast({
+            variant: "destructive",
+            title: "Couldn't enable notifications",
+            description:
+              pushPermission === "denied"
+                ? "Notifications are blocked in your browser settings."
+                : "Please try again.",
+          });
+        }
+      } else {
+        await disablePush();
+      }
+    } finally {
+      setIsTogglingPush(false);
+    }
+  };
 
   // --- Name + phone: plain profile fields on this app's own users table.
   // No Clerk routing, no SMS/OTP verification — see PATCH /users/me.
@@ -232,9 +266,10 @@ export default function Settings() {
         className="flex-1 flex flex-col overflow-hidden min-h-0"
       >
         <div className="flex-shrink-0 px-6 md:px-10 max-w-2xl mx-auto w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="appearance">Appearance</TabsTrigger>
+            <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
         </div>
@@ -361,6 +396,56 @@ export default function Settings() {
                   "System" follows your device's light/dark setting
                   automatically.
                 </p>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent
+          value="notifications"
+          className="flex-1 overflow-y-auto min-h-0 mt-0"
+        >
+          <div className="px-6 md:px-10 py-4 max-w-2xl mx-auto w-full space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-serif text-lg flex items-center gap-2">
+                  <Bell className="w-4 h-4" /> Notifications
+                </CardTitle>
+                <CardDescription>
+                  Get notified about new messages and calls even when the app
+                  isn't open.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!pushIsSupported ? (
+                  <p className="text-sm text-muted-foreground">
+                    Notifications aren't supported in this browser.
+                  </p>
+                ) : pushPermission === "denied" ? (
+                  <p className="text-sm text-muted-foreground">
+                    Notifications are blocked for this site in your browser
+                    settings. You'll need to allow them there before this can be
+                    turned on.
+                  </p>
+                ) : (
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">
+                        Message &amp; call notifications
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        We'll never show the content of a message — just who
+                        it's from.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={pushIsSubscribed}
+                      disabled={isTogglingPush}
+                      onCheckedChange={handleTogglePush}
+                      aria-label="Toggle notifications"
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

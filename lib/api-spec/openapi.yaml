@@ -20,6 +20,8 @@ tags:
     description: Cross-group activity feed
   - name: dms
     description: Direct message operations
+  - name: push
+    description: Web Push notification subscription management
 paths:
   /healthz:
     get:
@@ -115,6 +117,56 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/KeyRotationEntry"
+
+  /push/vapid-public-key:
+    get:
+      operationId: getVapidPublicKey
+      tags: [push]
+      summary: Get the server's VAPID public key
+      description: >
+        Needed by the browser's PushManager.subscribe() call. May be null
+        if the server doesn't have push configured (e.g. local dev) — the
+        client should treat that as "notifications unavailable" rather
+        than erroring.
+      responses:
+        "200":
+          description: The public key, or null if push isn't configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VapidPublicKeyResult"
+
+  /push/subscribe:
+    post:
+      operationId: subscribeToPush
+      tags: [push]
+      summary: Register a browser push subscription for the current user
+      description: >
+        Upserted by endpoint — re-subscribing the same browser updates its
+        keys rather than creating a duplicate. A user can have several
+        (one per browser/device).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushSubscriptionInput"
+      responses:
+        "200":
+          description: Subscribed
+    delete:
+      operationId: unsubscribeFromPush
+      tags: [push]
+      summary: Remove a browser push subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UnsubscribePushInput"
+      responses:
+        "200":
+          description: Unsubscribed (or was already not subscribed)
 
   /users/search:
     get:
@@ -473,6 +525,65 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MutedResult"
+        "404":
+          description: Not found
+
+  /groups/{groupId}/calls/join:
+    post:
+      operationId: joinGroupCall
+      tags: [groups]
+      summary: Join (starting if needed) this group's call
+      description: >
+        Group calls are a shared room, not a 1:1 ring — unlike DM calls,
+        there's no per-person "missed" tracking, no ring, and no push. If a
+        call is already active for this group, joins that one (no new log
+        entry); otherwise starts a new one. A compact summary ("Video call
+        · 12m") is written into the group's messages once the last
+        participant leaves (see the /leave endpoint).
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinGroupCallInput"
+      responses:
+        "200":
+          description: Joined (or started) the call
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinGroupCallResult"
+        "404":
+          description: Not found
+
+  /groups/{groupId}/calls/{callId}/leave:
+    post:
+      operationId: leaveGroupCall
+      tags: [groups]
+      summary: Leave this group's call
+      description: >
+        If this was the last active participant, finalizes the call and
+        writes its duration summary into the group's messages.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: callId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Left
         "404":
           description: Not found
 
@@ -1360,6 +1471,39 @@ components:
           type: string
           minLength: 1
 
+    VapidPublicKeyResult:
+      type: object
+      required: [publicKey]
+      properties:
+        publicKey:
+          type: ["string", "null"]
+
+    PushSubscriptionInput:
+      type: object
+      required: [endpoint, keys]
+      properties:
+        endpoint:
+          type: string
+          minLength: 1
+        keys:
+          type: object
+          required: [p256dh, auth]
+          properties:
+            p256dh:
+              type: string
+              minLength: 1
+            auth:
+              type: string
+              minLength: 1
+
+    UnsubscribePushInput:
+      type: object
+      required: [endpoint]
+      properties:
+        endpoint:
+          type: string
+          minLength: 1
+
     UpdateMyProfileInput:
       type: object
       required: [firstName, lastName]
@@ -1461,6 +1605,21 @@ components:
       properties:
         isMuted:
           type: boolean
+
+    JoinGroupCallInput:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [audio, video]
+
+    JoinGroupCallResult:
+      type: object
+      required: [callId]
+      properties:
+        callId:
+          type: string
 
     GroupMember:
       type: object
@@ -1607,7 +1766,7 @@ components:
           type: string
         type:
           type: string
-          enum: [text, file, voice, system]
+          enum: [text, file, voice, system, call]
           default: text
         fileName:
           type: ["string", "null"]

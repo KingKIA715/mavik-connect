@@ -12,6 +12,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/Layout";
 import { IncomingCallBanner } from "@/components/IncomingCallBanner";
+import { NotificationPromptBanner } from "@/components/NotificationPromptBanner";
 import NotFound from "@/pages/not-found";
 
 import Landing from "@/pages/Landing";
@@ -153,7 +154,12 @@ function ClerkProviderWithRoutes() {
  */
 function SignedInGlobals() {
   const { isSignedIn } = useAuth();
-  return <IncomingCallBanner enabled={!!isSignedIn} />;
+  return (
+    <>
+      <IncomingCallBanner enabled={!!isSignedIn} />
+      <NotificationPromptBanner enabled={!!isSignedIn} />
+    </>
+  );
 }
 
 function App() {
