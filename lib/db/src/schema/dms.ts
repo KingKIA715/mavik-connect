@@ -105,6 +105,54 @@ export const insertDmMessageSchema = createInsertSchema(dmMessagesTable).omit({
 export type InsertDmMessage = z.infer<typeof insertDmMessageSchema>;
 export type DmMessage = typeof dmMessagesTable.$inferSelect;
 
+/**
+ * Tracks a DM call's lifecycle (ringing -> answered/missed/declined/
+ * cancelled -> ended), separately from dmMessagesTable, since a call has
+ * mutable state over its lifetime rather than being an append-only entry
+ * like a message. Once a call reaches a terminal state, a compact summary
+ * gets written into dmMessagesTable (type "call") so it shows up inline in
+ * the conversation the same way "system" messages do in groups — see the
+ * finalizeDmCall helper in lib/dmCalls.ts.
+ */
+export const dmCallsTable = pgTable("dm_calls", {
+  id: serial("id").primaryKey(),
+  threadId: integer("thread_id")
+    .notNull()
+    .references(() => dmThreadsTable.id, { onDelete: "cascade" }),
+  callerId: text("caller_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), // "audio" | "video"
+  // "ringing": invite sent, waiting on the callee to answer/decline or for
+  //   the ring to time out.
+  // "answered": callee joined; call is (or very recently was) in progress.
+  // "missed": rang out unanswered (timeout).
+  // "declined": callee explicitly declined.
+  // "cancelled": caller hung up before the callee answered.
+  // "ended": was answered and has since finished — see answeredAt/endedAt
+  //   for duration.
+  status: text("status").notNull().default("ringing"),
+  startedAt: timestamp("started_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  answeredAt: timestamp("answered_at", { withTimezone: true }),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  // Set once this call's terminal-state summary has been written into
+  // dmMessagesTable — makes finalizing idempotent (safe to call more than
+  // once, e.g. from both the timeout and a racing client request).
+  logMessageId: integer("log_message_id").references(
+    (): AnyPgColumn => dmMessagesTable.id,
+    { onDelete: "set null" },
+  ),
+});
+
+export const insertDmCallSchema = createInsertSchema(dmCallsTable).omit({
+  id: true,
+  startedAt: true,
+});
+export type InsertDmCall = z.infer<typeof insertDmCallSchema>;
+export type DmCall = typeof dmCallsTable.$inferSelect;
+
 export const dmKeysTable = pgTable(
   "dm_keys",
   {

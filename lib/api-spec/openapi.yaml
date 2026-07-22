@@ -956,6 +956,129 @@ paths:
         "409":
           description: Already responded to
 
+  /dms/{threadId}/calls:
+    post:
+      operationId: startDmCall
+      tags: [dms]
+      summary: Start a voice or video call in a DM thread
+      description: >
+        Creates a ringing call and notifies the other participant over
+        their app-wide WebSocket connection (delivered regardless of which
+        page they're on, not just this specific conversation). Subject to
+        the same permission rule as sending a message (canSendDm) — you
+        can't call someone you currently can't message. Rings for 45
+        seconds; if unanswered, the call is auto-finalized as "missed" and
+        a compact summary is written into the thread as a message.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartDmCallInput"
+      responses:
+        "201":
+          description: Call started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartDmCallResult"
+        "403":
+          description: Not allowed to call this person right now
+        "404":
+          description: Not found
+
+  /dms/{threadId}/calls/{callId}/answer:
+    post:
+      operationId: answerDmCall
+      tags: [dms]
+      summary: Answer a ringing incoming DM call
+      description: >
+        Only the callee (not the caller) may answer, and only while the
+        call is still "ringing". Notifies the caller over their app-wide
+        connection so any other tab/device they have open stops ringing.
+        The actual media connection still happens over the existing
+        per-thread WebRTC signaling once the client navigates to the call
+        screen — this only marks the call as answered.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: callId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Marked answered
+        "403":
+          description: Not allowed
+        "404":
+          description: Not found
+
+  /dms/{threadId}/calls/{callId}/decline:
+    post:
+      operationId: declineDmCall
+      tags: [dms]
+      summary: Decline a ringing incoming DM call
+      description: >
+        Only the callee may decline, and only while still "ringing".
+        Immediately finalizes and logs the call as "declined" and notifies
+        the caller.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: callId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Declined
+        "404":
+          description: Not found
+
+  /dms/{threadId}/calls/{callId}/end:
+    post:
+      operationId: endDmCall
+      tags: [dms]
+      summary: End or cancel a DM call
+      description: >
+        Either participant may call this. If the call was still "ringing",
+        finalizes it as "cancelled" (logged the same as a missed call) and
+        notifies the other side. If it was "answered", finalizes it as
+        "ended" with a duration.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: callId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ended
+        "403":
+          description: Not allowed
+        "404":
+          description: Not found
+
   /dms/{threadId}/messages:
     get:
       operationId: listDmMessages
@@ -1682,6 +1805,30 @@ components:
           type: string
           enum: [accepted, rejected]
 
+    StartDmCallInput:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [audio, video]
+
+    StartDmCallResult:
+      type: object
+      required: [callId, calleeOnline]
+      properties:
+        callId:
+          type: string
+        calleeOnline:
+          type: boolean
+          description: >
+            Whether the callee currently has the app open at all (any
+            device/tab). Purely informational for the caller's UI (e.g. to
+            show "ringing" vs a softer "they might not see this right
+            away") — the ring is still sent either way, and Phase 2 will
+            use this same signal to decide whether to also send a push
+            notification.
+
     DmMessage:
       type: object
       required:
@@ -1710,7 +1857,7 @@ components:
           type: string
         type:
           type: string
-          enum: [text, file, voice]
+          enum: [text, file, voice, call]
           default: text
         fileName:
           type: ["string", "null"]

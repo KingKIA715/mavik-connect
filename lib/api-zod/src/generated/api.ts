@@ -807,6 +807,60 @@ export const RespondToDmThreadResponse = zod.object({
 
 
 /**
+ * Creates a ringing call and notifies the other participant over their app-wide WebSocket connection (delivered regardless of which page they're on, not just this specific conversation). Subject to the same permission rule as sending a message (canSendDm) — you can't call someone you currently can't message. Rings for 45 seconds; if unanswered, the call is auto-finalized as "missed" and a compact summary is written into the thread as a message.
+ * @summary Start a voice or video call in a DM thread
+ */
+export const StartDmCallParams = zod.object({
+  "threadId": zod.coerce.string()
+})
+
+export const StartDmCallBody = zod.object({
+  "kind": zod.enum(['audio', 'video'])
+})
+
+export const StartDmCallResponse = zod.object({
+  "callId": zod.string(),
+  "calleeOnline": zod.boolean().describe('Whether the callee currently has the app open at all (any device\/tab). Purely informational for the caller\'s UI (e.g. to show \"ringing\" vs a softer \"they might not see this right away\") — the ring is still sent either way, and Phase 2 will use this same signal to decide whether to also send a push notification.\n')
+})
+
+
+/**
+ * Only the callee (not the caller) may answer, and only while the call is still "ringing". Notifies the caller over their app-wide connection so any other tab/device they have open stops ringing. The actual media connection still happens over the existing per-thread WebRTC signaling once the client navigates to the call screen — this only marks the call as answered.
+ * @summary Answer a ringing incoming DM call
+ */
+export const AnswerDmCallParams = zod.object({
+  "threadId": zod.coerce.string(),
+  "callId": zod.coerce.string()
+})
+
+export const AnswerDmCallResponse = zod.unknown()
+
+
+/**
+ * Only the callee may decline, and only while still "ringing". Immediately finalizes and logs the call as "declined" and notifies the caller.
+ * @summary Decline a ringing incoming DM call
+ */
+export const DeclineDmCallParams = zod.object({
+  "threadId": zod.coerce.string(),
+  "callId": zod.coerce.string()
+})
+
+export const DeclineDmCallResponse = zod.unknown()
+
+
+/**
+ * Either participant may call this. If the call was still "ringing", finalizes it as "cancelled" (logged the same as a missed call) and notifies the other side. If it was "answered", finalizes it as "ended" with a duration.
+ * @summary End or cancel a DM call
+ */
+export const EndDmCallParams = zod.object({
+  "threadId": zod.coerce.string(),
+  "callId": zod.coerce.string()
+})
+
+export const EndDmCallResponse = zod.unknown()
+
+
+/**
  * Returns messages oldest-first. Use limit/offset query params for pagination. Defaults to 50 messages per page, maximum 100.
  * @summary List messages in a DM thread
  */
@@ -836,7 +890,7 @@ export const ListDmMessagesResponseItem = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']).default(listDmMessagesResponseTypeDefault),
+  "type": zod.enum(['text', 'file', 'voice', 'call']).default(listDmMessagesResponseTypeDefault),
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
@@ -891,7 +945,7 @@ export const SendDmMessageResponse = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']).default(sendDmMessageResponseTypeDefault),
+  "type": zod.enum(['text', 'file', 'voice', 'call']).default(sendDmMessageResponseTypeDefault),
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
@@ -941,7 +995,7 @@ export const EditDmMessageResponse = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']).default(editDmMessageResponseTypeDefault),
+  "type": zod.enum(['text', 'file', 'voice', 'call']).default(editDmMessageResponseTypeDefault),
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),
@@ -984,7 +1038,7 @@ export const DeleteDmMessageResponse = zod.object({
   "senderName": zod.string(),
   "senderAvatarUrl": zod.string().nullish(),
   "content": zod.string(),
-  "type": zod.enum(['text', 'file', 'voice']).default(deleteDmMessageResponseTypeDefault),
+  "type": zod.enum(['text', 'file', 'voice', 'call']).default(deleteDmMessageResponseTypeDefault),
   "fileName": zod.string().nullish(),
   "mimeType": zod.string().nullish(),
   "fileSize": zod.number().nullish(),

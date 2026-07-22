@@ -363,6 +363,24 @@ export interface RespondToDmThreadResult {
   status: RespondToDmThreadResultStatus;
 }
 
+export type StartDmCallInputKind = typeof StartDmCallInputKind[keyof typeof StartDmCallInputKind];
+
+
+export const StartDmCallInputKind = {
+  audio: 'audio',
+  video: 'video',
+} as const;
+
+export interface StartDmCallInput {
+  kind: StartDmCallInputKind;
+}
+
+export interface StartDmCallResult {
+  callId: string;
+  /** Whether the callee currently has the app open at all (any device/tab). Purely informational for the caller's UI (e.g. to show "ringing" vs a softer "they might not see this right away") — the ring is still sent either way, and Phase 2 will use this same signal to decide whether to also send a push notification. */
+  calleeOnline: boolean;
+}
+
 export type DmMessageType = typeof DmMessageType[keyof typeof DmMessageType];
 
 
@@ -370,6 +388,7 @@ export const DmMessageType = {
   text: 'text',
   file: 'file',
   voice: 'voice',
+  call: 'call',
 } as const;
 
 export interface DmMessage {

@@ -5,6 +5,7 @@ import groupsRouter from "./groups";
 import messagesRouter from "./messages";
 import activityRouter from "./activity";
 import dmsRouter from "./dms";
+import dmCallsRouter from "./dmCalls";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(groupsRouter);
 router.use(messagesRouter);
 router.use(activityRouter);
 router.use(dmsRouter);
+router.use(dmCallsRouter);
 
 export default router;

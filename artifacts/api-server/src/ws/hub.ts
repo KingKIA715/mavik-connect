@@ -21,11 +21,77 @@ import { logger } from "../lib/logger";
  * the same way, supporting the same message + signal protocol as groups
  * (always exactly 2 participants instead of N). No presence broadcast for
  * DMs — not needed with only one other person.
+ *
+ * A third connection scope, `/api/ws?scope=user`, is global to the
+ * authenticated user rather than tied to one group/thread — deliberately
+ * separate from the two above rather than trying to overload them, since
+ * "am I looking at this specific conversation" and "is my app open at all"
+ * are different questions. It exists purely to deliver events that need to
+ * reach a user regardless of which page (if any conversation page at all)
+ * they currently have open — today, just incoming-call ringing (see
+ * routes/dmCalls.ts): the actual WebRTC media signaling above is untouched
+ * and still happens over the per-thread/group connection once a call is
+ * answered.
+ *
+ * Server -> client (user scope):
+ *   { type: "incoming-call", ... }      see routes/dmCalls.ts for the full shape
+ *   { type: "call-answered", callId }
+ *   { type: "call-declined", callId }
+ *   { type: "call-cancelled", callId }
  */
 
 interface Connection {
   ws: WebSocket;
   userId: string;
+}
+
+const userConnections = new Map<string, Set<Connection>>();
+
+export function registerUserConnection(
+  userId: string,
+  ws: WebSocket,
+): Connection {
+  const conn: Connection = { ws, userId };
+  const set = userConnections.get(userId) ?? new Set<Connection>();
+  set.add(conn);
+  userConnections.set(userId, set);
+  return conn;
+}
+
+export function unregisterUserConnection(
+  userId: string,
+  conn: Connection,
+): void {
+  const set = userConnections.get(userId);
+  if (!set) return;
+  set.delete(conn);
+  if (set.size === 0) userConnections.delete(userId);
+}
+
+/**
+ * Whether `userId` currently has the app open at all (any tab/device),
+ * regardless of which conversation — used to decide "ring live over
+ * WebSocket" vs "this person isn't around, send a push notification
+ * instead" for incoming calls.
+ */
+export function isUserOnline(userId: string): boolean {
+  const set = userConnections.get(userId);
+  return !!set && set.size > 0;
+}
+
+export function sendToUserGlobal(userId: string, payload: unknown): void {
+  const set = userConnections.get(userId);
+  if (!set) return;
+  const data = JSON.stringify(payload);
+  for (const conn of set) {
+    if (conn.ws.readyState === conn.ws.OPEN) {
+      try {
+        conn.ws.send(data);
+      } catch (err) {
+        logger.error({ err, userId }, "Failed to send WS message");
+      }
+    }
+  }
 }
 
 const groupConnections = new Map<number, Set<Connection>>();

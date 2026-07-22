@@ -13,4 +13,5 @@ export const DmMessageType = {
   text: 'text',
   file: 'file',
   voice: 'voice',
+  call: 'call',
 } as const;

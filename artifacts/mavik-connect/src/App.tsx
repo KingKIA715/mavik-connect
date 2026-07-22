@@ -1,10 +1,17 @@
-import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
+import {
+  Switch,
+  Route,
+  Router as WouterRouter,
+  Redirect,
+  useLocation,
+} from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ClerkProvider, SignIn, SignUp, useAuth } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/Layout";
+import { IncomingCallBanner } from "@/components/IncomingCallBanner";
 import NotFound from "@/pages/not-found";
 
 import Landing from "@/pages/Landing";
@@ -52,7 +59,11 @@ function ProtectedRoute({ component: Component }: { component: any }) {
 function SignInPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+      <SignIn
+        routing="path"
+        path={`${basePath}/sign-in`}
+        signUpUrl={`${basePath}/sign-up`}
+      />
     </div>
   );
 }
@@ -60,7 +71,11 @@ function SignInPage() {
 function SignUpPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+      <SignUp
+        routing="path"
+        path={`${basePath}/sign-up`}
+        signInUrl={`${basePath}/sign-in`}
+      />
     </div>
   );
 }
@@ -122,11 +137,23 @@ function ClerkProviderWithRoutes() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Router />
+          <SignedInGlobals />
           <Toaster />
         </TooltipProvider>
       </QueryClientProvider>
     </ClerkProvider>
   );
+}
+
+/**
+ * Global, always-mounted-while-signed-in pieces that shouldn't unmount
+ * when navigating between routes (e.g. an incoming call should still ring
+ * while on the Settings page, not just within the chat shell). Split out
+ * so it can call useAuth() without re-rendering the whole route tree.
+ */
+function SignedInGlobals() {
+  const { isSignedIn } = useAuth();
+  return <IncomingCallBanner enabled={!!isSignedIn} />;
 }
 
 function App() {

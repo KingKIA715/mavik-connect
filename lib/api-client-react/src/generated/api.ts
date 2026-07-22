@@ -56,6 +56,8 @@ import type {
   SetGroupAvatarInput,
   SetMutedInput,
   SetPinnedInput,
+  StartDmCallInput,
+  StartDmCallResult,
   ToggleReactionInput,
   UpdateMyProfileInput,
   UserProfile
@@ -2788,6 +2790,301 @@ export const useRespondToDmThread = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getRespondToDmThreadMutationOptions(options));
+    }
+
+export const getStartDmCallUrl = (threadId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/calls`
+}
+
+/**
+ * Creates a ringing call and notifies the other participant over their app-wide WebSocket connection (delivered regardless of which page they're on, not just this specific conversation). Subject to the same permission rule as sending a message (canSendDm) — you can't call someone you currently can't message. Rings for 45 seconds; if unanswered, the call is auto-finalized as "missed" and a compact summary is written into the thread as a message.
+ * @summary Start a voice or video call in a DM thread
+ */
+export const startDmCall = async (threadId: string,
+    startDmCallInput: StartDmCallInput, options?: RequestInit): Promise<StartDmCallResult> => {
+
+  return customFetch<StartDmCallResult>(getStartDmCallUrl(threadId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(startDmCallInput)
+  }
+);}
+
+
+
+
+
+export const getStartDmCallMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startDmCall>>, TError,{threadId: string;data: BodyType<StartDmCallInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startDmCall>>, TError,{threadId: string;data: BodyType<StartDmCallInput>}, TContext> => {
+
+const mutationKey = ['startDmCall'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startDmCall>>, {threadId: string;data: BodyType<StartDmCallInput>}> = (props) => {
+          const {threadId,data} = props ?? {};
+
+          return  startDmCall(threadId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartDmCallMutationResult = NonNullable<Awaited<ReturnType<typeof startDmCall>>>
+    export type StartDmCallMutationBody = BodyType<StartDmCallInput>
+    export type StartDmCallMutationError = ErrorType<void>
+
+    /**
+ * @summary Start a voice or video call in a DM thread
+ */
+export const useStartDmCall = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startDmCall>>, TError,{threadId: string;data: BodyType<StartDmCallInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startDmCall>>,
+        TError,
+        {threadId: string;data: BodyType<StartDmCallInput>},
+        TContext
+      > => {
+      return useMutation(getStartDmCallMutationOptions(options));
+    }
+
+export const getAnswerDmCallUrl = (threadId: string,
+    callId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/calls/${callId}/answer`
+}
+
+/**
+ * Only the callee (not the caller) may answer, and only while the call is still "ringing". Notifies the caller over their app-wide connection so any other tab/device they have open stops ringing. The actual media connection still happens over the existing per-thread WebRTC signaling once the client navigates to the call screen — this only marks the call as answered.
+ * @summary Answer a ringing incoming DM call
+ */
+export const answerDmCall = async (threadId: string,
+    callId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getAnswerDmCallUrl(threadId,callId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getAnswerDmCallMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof answerDmCall>>, TError,{threadId: string;callId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof answerDmCall>>, TError,{threadId: string;callId: string}, TContext> => {
+
+const mutationKey = ['answerDmCall'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof answerDmCall>>, {threadId: string;callId: string}> = (props) => {
+          const {threadId,callId} = props ?? {};
+
+          return  answerDmCall(threadId,callId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AnswerDmCallMutationResult = NonNullable<Awaited<ReturnType<typeof answerDmCall>>>
+
+    export type AnswerDmCallMutationError = ErrorType<void>
+
+    /**
+ * @summary Answer a ringing incoming DM call
+ */
+export const useAnswerDmCall = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof answerDmCall>>, TError,{threadId: string;callId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof answerDmCall>>,
+        TError,
+        {threadId: string;callId: string},
+        TContext
+      > => {
+      return useMutation(getAnswerDmCallMutationOptions(options));
+    }
+
+export const getDeclineDmCallUrl = (threadId: string,
+    callId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/calls/${callId}/decline`
+}
+
+/**
+ * Only the callee may decline, and only while still "ringing". Immediately finalizes and logs the call as "declined" and notifies the caller.
+ * @summary Decline a ringing incoming DM call
+ */
+export const declineDmCall = async (threadId: string,
+    callId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeclineDmCallUrl(threadId,callId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeclineDmCallMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof declineDmCall>>, TError,{threadId: string;callId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof declineDmCall>>, TError,{threadId: string;callId: string}, TContext> => {
+
+const mutationKey = ['declineDmCall'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof declineDmCall>>, {threadId: string;callId: string}> = (props) => {
+          const {threadId,callId} = props ?? {};
+
+          return  declineDmCall(threadId,callId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeclineDmCallMutationResult = NonNullable<Awaited<ReturnType<typeof declineDmCall>>>
+
+    export type DeclineDmCallMutationError = ErrorType<void>
+
+    /**
+ * @summary Decline a ringing incoming DM call
+ */
+export const useDeclineDmCall = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof declineDmCall>>, TError,{threadId: string;callId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof declineDmCall>>,
+        TError,
+        {threadId: string;callId: string},
+        TContext
+      > => {
+      return useMutation(getDeclineDmCallMutationOptions(options));
+    }
+
+export const getEndDmCallUrl = (threadId: string,
+    callId: string,) => {
+
+
+
+
+  return `/api/dms/${threadId}/calls/${callId}/end`
+}
+
+/**
+ * Either participant may call this. If the call was still "ringing", finalizes it as "cancelled" (logged the same as a missed call) and notifies the other side. If it was "answered", finalizes it as "ended" with a duration.
+ * @summary End or cancel a DM call
+ */
+export const endDmCall = async (threadId: string,
+    callId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getEndDmCallUrl(threadId,callId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getEndDmCallMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof endDmCall>>, TError,{threadId: string;callId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof endDmCall>>, TError,{threadId: string;callId: string}, TContext> => {
+
+const mutationKey = ['endDmCall'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof endDmCall>>, {threadId: string;callId: string}> = (props) => {
+          const {threadId,callId} = props ?? {};
+
+          return  endDmCall(threadId,callId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EndDmCallMutationResult = NonNullable<Awaited<ReturnType<typeof endDmCall>>>
+
+    export type EndDmCallMutationError = ErrorType<void>
+
+    /**
+ * @summary End or cancel a DM call
+ */
+export const useEndDmCall = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof endDmCall>>, TError,{threadId: string;callId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof endDmCall>>,
+        TError,
+        {threadId: string;callId: string},
+        TContext
+      > => {
+      return useMutation(getEndDmCallMutationOptions(options));
     }
 
 export const getListDmMessagesUrl = (threadId: string,

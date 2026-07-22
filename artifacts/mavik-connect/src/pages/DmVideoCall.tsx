@@ -1,19 +1,34 @@
 import { useParams, useSearch } from "wouter";
-import { useGetDmThread, useGetMyProfile, getGetDmThreadQueryKey } from "@workspace/api-client-react";
+import {
+  useGetDmThread,
+  useGetMyProfile,
+  useEndDmCall,
+  getGetDmThreadQueryKey,
+} from "@workspace/api-client-react";
 import { useThreadWebRTC } from "@/hooks/use-thread-webrtc";
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Video, Mic, MicOff, VideoOff, PhoneOff, SwitchCamera } from "lucide-react";
+import {
+  Video,
+  Mic,
+  MicOff,
+  VideoOff,
+  PhoneOff,
+  SwitchCamera,
+} from "lucide-react";
 
 export default function DmVideoCall() {
   const { threadId } = useParams<{ threadId: string }>();
   const search = useSearch();
-  const isVoiceOnly = new URLSearchParams(search).get("mode") === "voice";
+  const searchParams = new URLSearchParams(search);
+  const isVoiceOnly = searchParams.get("mode") === "voice";
+  const callId = searchParams.get("callId");
   const { data: profile } = useGetMyProfile();
   const { data: thread } = useGetDmThread(threadId!, {
     query: { enabled: !!threadId, queryKey: getGetDmThreadQueryKey(threadId!) },
   });
+  const endDmCall = useEndDmCall();
 
   const {
     localStream,
@@ -25,14 +40,24 @@ export default function DmVideoCall() {
     hasVideo,
     toggleAudio,
     toggleVideo,
-    switchCamera
+    switchCamera,
   } = useThreadWebRTC(threadId, profile?.id);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     startCall({ video: !isVoiceOnly });
-    return () => leaveCall();
+    return () => {
+      leaveCall();
+      // Finalizes the call (marks it answered-and-ended, or cancelled if
+      // no one had joined yet) and writes the "Voice call · 4m" / "Missed
+      // video call" style summary into the conversation. callId is only
+      // absent for very old/rare direct links to /call without going
+      // through the "Call" button — skip gracefully rather than error.
+      if (threadId && callId) {
+        endDmCall.mutate({ threadId, callId });
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startCall, leaveCall]);
 
@@ -49,12 +74,23 @@ export default function DmVideoCall() {
   return (
     <div className="flex flex-col h-full bg-black text-white relative">
       <div className="p-6 bg-gradient-to-b from-black/80 to-transparent absolute top-0 left-0 right-0 z-10">
-        <h1 className="text-2xl font-serif font-bold">{thread.otherUserName} {isVoiceOnly ? "Voice Call" : "Call"}</h1>
+        <h1 className="text-2xl font-serif font-bold">
+          {thread.otherUserName} {isVoiceOnly ? "Voice Call" : "Call"}
+        </h1>
+        {remoteIds.length === 0 && (
+          <p className="text-sm text-white/70 mt-1">Calling…</p>
+        )}
       </div>
 
-      <div className="flex-1 p-4 grid gap-4 place-items-center" style={{
-        gridTemplateColumns: remoteIds.length > 0 ? "repeat(auto-fit, minmax(300px, 1fr))" : "1fr"
-      }}>
+      <div
+        className="flex-1 p-4 grid gap-4 place-items-center"
+        style={{
+          gridTemplateColumns:
+            remoteIds.length > 0
+              ? "repeat(auto-fit, minmax(300px, 1fr))"
+              : "1fr",
+        }}
+      >
         {/* Local Tile */}
         {hasVideo ? (
           <div className="relative rounded-2xl overflow-hidden bg-gray-900 shadow-xl aspect-video w-full max-w-3xl">
@@ -70,15 +106,27 @@ export default function DmVideoCall() {
             </div>
           </div>
         ) : (
-          <VoiceTile name="You" avatarUrl={profile.avatarUrl} isMuted={isMuted} />
+          <VoiceTile
+            name="You"
+            avatarUrl={profile.avatarUrl}
+            isMuted={isMuted}
+          />
         )}
 
         {/* Remote Tile — a DM thread only ever has the one other participant */}
-        {remoteIds.map(id => {
+        {remoteIds.map((id) => {
           return isVoiceOnly ? (
-            <VoiceTile key={id} name={thread.otherUserName} avatarUrl={thread.otherUserAvatarUrl} />
+            <VoiceTile
+              key={id}
+              name={thread.otherUserName}
+              avatarUrl={thread.otherUserAvatarUrl}
+            />
           ) : (
-            <RemoteVideo key={id} stream={remoteStreams[id]} name={thread.otherUserName} />
+            <RemoteVideo
+              key={id}
+              stream={remoteStreams[id]}
+              name={thread.otherUserName}
+            />
           );
         })}
       </div>
@@ -91,7 +139,11 @@ export default function DmVideoCall() {
           onClick={toggleAudio}
           aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
         >
-          {isMuted ? <MicOff className="w-6 h-6 text-white" /> : <Mic className="w-6 h-6 text-white" />}
+          {isMuted ? (
+            <MicOff className="w-6 h-6 text-white" />
+          ) : (
+            <Mic className="w-6 h-6 text-white" />
+          )}
         </Button>
         {!isVoiceOnly && (
           <>
@@ -102,7 +154,11 @@ export default function DmVideoCall() {
               onClick={toggleVideo}
               aria-label={isVideoOff ? "Turn camera on" : "Turn camera off"}
             >
-              {isVideoOff ? <VideoOff className="w-6 h-6 text-white" /> : <Video className="w-6 h-6 text-white" />}
+              {isVideoOff ? (
+                <VideoOff className="w-6 h-6 text-white" />
+              ) : (
+                <Video className="w-6 h-6 text-white" />
+              )}
             </Button>
             <Button
               size="icon"
@@ -115,7 +171,12 @@ export default function DmVideoCall() {
             </Button>
           </>
         )}
-        <Button size="icon" variant="destructive" className="w-14 h-14 rounded-full" onClick={() => window.history.back()}>
+        <Button
+          size="icon"
+          variant="destructive"
+          className="w-14 h-14 rounded-full"
+          onClick={() => window.history.back()}
+        >
           <PhoneOff className="w-6 h-6" />
         </Button>
       </div>
@@ -123,7 +184,15 @@ export default function DmVideoCall() {
   );
 }
 
-function VoiceTile({ name, avatarUrl, isMuted }: { name: string; avatarUrl?: string | null; isMuted?: boolean }) {
+function VoiceTile({
+  name,
+  avatarUrl,
+  isMuted,
+}: {
+  name: string;
+  avatarUrl?: string | null;
+  isMuted?: boolean;
+}) {
   return (
     <div className="relative rounded-2xl overflow-hidden bg-gray-900 shadow-xl aspect-video w-full max-w-3xl flex items-center justify-center">
       <Avatar className="w-24 h-24 border-2 border-white/10 shadow-xl">
@@ -140,7 +209,7 @@ function VoiceTile({ name, avatarUrl, isMuted }: { name: string; avatarUrl?: str
   );
 }
 
-function RemoteVideo({ stream, name }: { stream: MediaStream, name: string }) {
+function RemoteVideo({ stream, name }: { stream: MediaStream; name: string }) {
   const ref = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {

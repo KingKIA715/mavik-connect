@@ -15,6 +15,8 @@ import {
   unregisterThreadConnection,
   broadcastToThread,
   sendToUserInThread,
+  registerUserConnection,
+  unregisterUserConnection,
 } from "./hub";
 
 export const WS_PATH = "/api/ws";
@@ -64,6 +66,28 @@ export function attachWebSocketServer(server: HttpServer): void {
 
       const groupIdParam = url.searchParams.get("groupId");
       const threadIdParam = url.searchParams.get("threadId");
+      const scopeParam = url.searchParams.get("scope");
+
+      if (scopeParam === "user") {
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          const conn = registerUserConnection(userId, ws);
+
+          // No client -> server messages are expected on this connection —
+          // it exists purely to receive server-pushed events (see hub.ts's
+          // doc comment). Ignore anything a client sends here rather than
+          // erroring, in case of future additions.
+          ws.on("message", () => {});
+
+          ws.on("close", () => {
+            unregisterUserConnection(userId, conn);
+          });
+
+          ws.on("error", (err) => {
+            logger.error({ err, userId }, "WS connection error");
+          });
+        });
+        return;
+      }
 
       if (groupIdParam !== null) {
         const groupId = parseGroupId(groupIdParam);
