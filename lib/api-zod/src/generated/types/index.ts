@@ -29,6 +29,8 @@ export * from './healthStatus';
 export * from './joinGroupCallInput';
 export * from './joinGroupCallInputKind';
 export * from './joinGroupCallResult';
+export * from './keyBackupInput';
+export * from './keyBackupResponse';
 export * from './keyRotationEntry';
 export * from './listDmMessagesParams';
 export * from './listMessagesParams';

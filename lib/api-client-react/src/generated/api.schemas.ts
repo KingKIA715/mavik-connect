@@ -58,6 +58,24 @@ export interface PublicKeyInput {
   publicKey: string;
 }
 
+export interface KeyBackupInput {
+  /** @minLength 1 */
+  ciphertext: string;
+  /** @minLength 1 */
+  salt: string;
+  /** @minLength 1 */
+  iv: string;
+}
+
+export interface KeyBackupResponse {
+  /** @nullable */
+  ciphertext: string | null;
+  /** @nullable */
+  salt: string | null;
+  /** @nullable */
+  iv: string | null;
+}
+
 export interface VapidPublicKeyResult {
   /** @nullable */
   publicKey: string | null;

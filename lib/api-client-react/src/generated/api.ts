@@ -39,6 +39,8 @@ import type {
   HealthStatus,
   JoinGroupCallInput,
   JoinGroupCallResult,
+  KeyBackupInput,
+  KeyBackupResponse,
   KeyRotationEntry,
   ListDmMessagesParams,
   ListMessagesParams,
@@ -461,6 +463,155 @@ export function useGetKeyHistory<TData = Awaited<ReturnType<typeof getKeyHistory
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetKeyHistoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSetMyKeyBackupUrl = () => {
+
+
+
+
+  return `/api/users/me/key-backup`
+}
+
+/**
+ * Client-side only encryption: the private key is AES-GCM-encrypted with a key derived (PBKDF2) from a recovery phrase the user is shown exactly once. The server only ever sees ciphertext, salt, and iv — never the phrase or the plaintext key. Restoring from this backup on a new device recovers the SAME keypair, so it is NOT treated as a key rotation (existing wrapped group/DM keys stay valid).
+ * @summary Store an encrypted recovery backup of the caller's E2E private key
+ */
+export const setMyKeyBackup = async (keyBackupInput: KeyBackupInput, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getSetMyKeyBackupUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(keyBackupInput)
+  }
+);}
+
+
+
+
+
+export const getSetMyKeyBackupMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setMyKeyBackup>>, TError,{data: BodyType<KeyBackupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setMyKeyBackup>>, TError,{data: BodyType<KeyBackupInput>}, TContext> => {
+
+const mutationKey = ['setMyKeyBackup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setMyKeyBackup>>, {data: BodyType<KeyBackupInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  setMyKeyBackup(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetMyKeyBackupMutationResult = NonNullable<Awaited<ReturnType<typeof setMyKeyBackup>>>
+    export type SetMyKeyBackupMutationBody = BodyType<KeyBackupInput>
+    export type SetMyKeyBackupMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Store an encrypted recovery backup of the caller's E2E private key
+ */
+export const useSetMyKeyBackup = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setMyKeyBackup>>, TError,{data: BodyType<KeyBackupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setMyKeyBackup>>,
+        TError,
+        {data: BodyType<KeyBackupInput>},
+        TContext
+      > => {
+      return useMutation(getSetMyKeyBackupMutationOptions(options));
+    }
+
+export const getGetMyKeyBackupUrl = () => {
+
+
+
+
+  return `/api/users/me/key-backup`
+}
+
+/**
+ * @summary Fetch the caller's encrypted key backup, if any
+ */
+export const getMyKeyBackup = async ( options?: RequestInit): Promise<KeyBackupResponse> => {
+
+  return customFetch<KeyBackupResponse>(getGetMyKeyBackupUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyKeyBackupQueryKey = () => {
+    return [
+    `/api/users/me/key-backup`
+    ] as const;
+    }
+
+
+export const getGetMyKeyBackupQueryOptions = <TData = Awaited<ReturnType<typeof getMyKeyBackup>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyKeyBackup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyKeyBackupQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyKeyBackup>>> = ({ signal }) => getMyKeyBackup({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyKeyBackup>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyKeyBackupQueryResult = NonNullable<Awaited<ReturnType<typeof getMyKeyBackup>>>
+export type GetMyKeyBackupQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Fetch the caller's encrypted key backup, if any
+ */
+
+export function useGetMyKeyBackup<TData = Awaited<ReturnType<typeof getMyKeyBackup>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyKeyBackup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyKeyBackupQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

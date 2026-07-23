@@ -98,6 +98,34 @@ export const GetKeyHistoryResponse = zod.array(GetKeyHistoryResponseItem)
 
 
 /**
+ * Client-side only encryption: the private key is AES-GCM-encrypted with a key derived (PBKDF2) from a recovery phrase the user is shown exactly once. The server only ever sees ciphertext, salt, and iv — never the phrase or the plaintext key. Restoring from this backup on a new device recovers the SAME keypair, so it is NOT treated as a key rotation (existing wrapped group/DM keys stay valid).
+ * @summary Store an encrypted recovery backup of the caller's E2E private key
+ */
+
+
+
+
+
+export const SetMyKeyBackupBody = zod.object({
+  "ciphertext": zod.string().min(1),
+  "salt": zod.string().min(1),
+  "iv": zod.string().min(1)
+})
+
+export const SetMyKeyBackupResponse = zod.unknown()
+
+
+/**
+ * @summary Fetch the caller's encrypted key backup, if any
+ */
+export const GetMyKeyBackupResponse = zod.object({
+  "ciphertext": zod.string().nullable(),
+  "salt": zod.string().nullable(),
+  "iv": zod.string().nullable()
+})
+
+
+/**
  * Needed by the browser's PushManager.subscribe() call. May be null if the server doesn't have push configured (e.g. local dev) — the client should treat that as "notifications unavailable" rather than erroring.
  * @summary Get the server's VAPID public key
  */
