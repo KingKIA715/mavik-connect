@@ -141,6 +141,7 @@ export async function finalizeDmCall(
         title: sender?.name ?? "Family Member",
         body: `Missed ${call.kind === "video" ? "video" : "voice"} call`,
         url: `/app/dms/${call.threadId}`,
+        type: "call",
       });
     }
   }

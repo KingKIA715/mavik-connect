@@ -12,8 +12,16 @@
 const CACHE_VERSION = "v1";
 const CACHE_NAME = `mavik-connect-${CACHE_VERSION}`;
 
-self.addEventListener("install", () => {
-  self.skipWaiting();
+const OFFLINE_URL = "/offline.html";
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.add(OFFLINE_URL))
+      .catch(() => {}) // don't fail install if this one fetch hiccups
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener("activate", (event) => {
@@ -31,6 +39,57 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// Reads the same "mavik-settings" IndexedDB store src/lib/quiet-hours.ts
+// writes to. Duplicated here (rather than imported) because this is a
+// classic, not module, service worker — see its registration in
+// main.tsx. Never throws: any failure here just means "don't suppress",
+// which is the safe default (a missed notification is worse than an
+// unwanted one).
+function getQuietHours() {
+  return new Promise((resolve) => {
+    const fallback = { enabled: false, startHour: 21, endHour: 7 };
+    let req;
+    try {
+      req = indexedDB.open("mavik-settings", 1);
+    } catch {
+      return resolve(fallback);
+    }
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains("prefs")) {
+        req.result.createObjectStore("prefs");
+      }
+    };
+    req.onerror = () => resolve(fallback);
+    req.onsuccess = () => {
+      const db = req.result;
+      try {
+        const tx = db.transaction("prefs", "readonly");
+        const getReq = tx.objectStore("prefs").get("quietHours");
+        getReq.onsuccess = () => {
+          db.close();
+          resolve(getReq.result || fallback);
+        };
+        getReq.onerror = () => {
+          db.close();
+          resolve(fallback);
+        };
+      } catch {
+        resolve(fallback);
+      }
+    };
+  });
+}
+
+function isWithinQuietHours(quietHours) {
+  if (!quietHours.enabled) return false;
+  const hour = new Date().getHours();
+  const { startHour, endHour } = quietHours;
+  if (startHour === endHour) return false;
+  // Wraps past midnight, e.g. 21 -> 7.
+  if (startHour > endHour) return hour >= startHour || hour < endHour;
+  return hour >= startHour && hour < endHour;
+}
+
 // Push notifications. The payload is always generic, never message
 // content — see lib/push.ts on the server: messages are E2E encrypted, so
 // the server never has plaintext to put here even if it wanted to, and
@@ -45,14 +104,39 @@ self.addEventListener("push", (event) => {
     return;
   }
 
-  const title = payload.title || "Mavik Connect";
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body: payload.body || "",
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      data: { url: payload.url || "/app" },
-      tag: payload.url, // collapses repeat notifications for the same conversation
+    (async () => {
+      // Calls always ring through — quiet hours only ever suppress
+      // ordinary message pushes.
+      if (payload.type !== "call") {
+        const quietHours = await getQuietHours();
+        if (isWithinQuietHours(quietHours)) return;
+      }
+
+      const title = payload.title || "Mavik Connect";
+      return self.registration.showNotification(title, {
+        body: payload.body || "",
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        data: { url: payload.url || "/app" },
+        tag: payload.url, // collapses repeat notifications for the same conversation
+      });
+    })(),
+  );
+});
+
+self.addEventListener("sync", (event) => {
+  if (event.tag !== "mavik-outbox-flush") return;
+  // The actual send happens in page context (src/hooks/use-offline-outbox.ts)
+  // since it already has the app's authenticated API client wired up —
+  // simplest to have every open client just run its own flush rather than
+  // duplicating the send logic here. If no client is open, this is a
+  // no-op; the online-event listener picks it up next time a tab opens.
+  event.waitUntil(
+    self.clients.matchAll({ type: "window" }).then((clients) => {
+      for (const client of clients) {
+        client.postMessage({ type: "mavik-outbox-flush-requested" });
+      }
     }),
   );
 });
@@ -103,11 +187,15 @@ self.addEventListener("fetch", (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
           return response;
         })
-        .catch(
-          () =>
-            caches.match(request).then((cached) => cached) ||
-            caches.match(new URL(".", self.registration.scope).href),
-        ),
+        .catch(async () => {
+          const cached = await caches.match(request);
+          if (cached) return cached;
+          const shell = await caches.match(
+            new URL(".", self.registration.scope).href,
+          );
+          if (shell) return shell;
+          return caches.match(OFFLINE_URL);
+        }),
     );
     return;
   }

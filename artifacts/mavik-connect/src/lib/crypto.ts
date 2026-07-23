@@ -1,18 +1,38 @@
 // End-to-end encryption for Mavik Connect.
 //
 // Design: every user has an RSA-OAEP keypair. The private key never leaves
-// the browser (stored in localStorage). Every group has a random AES-256-GCM
-// key generated on the client. That AES key is "wrapped" (encrypted) once per
-// member using that member's RSA public key, and only the wrapped copies are
-// ever sent to the server — the server can never see a plaintext group key or
-// plaintext message content.
+// the browser — stored as a non-extractable CryptoKey in IndexedDB (see
+// key-store.ts), not as plaintext in localStorage. Every group has a random
+// AES-256-GCM key generated on the client. That AES key is "wrapped"
+// (encrypted) once per member using that member's RSA public key, and only
+// the wrapped copies are ever sent to the server — the server can never see
+// a plaintext group key or plaintext message content.
+//
+// Identity recovery: a lost/cleared browser used to mean the private key
+// was gone forever — fine for that one user's future messages (a new
+// keypair works going forward), but catastrophic if EVERY participant in a
+// thread eventually loses their browser, since the wrapped thread key
+// becomes unrecoverable by anyone. See recovery-phrase.ts: on first setup,
+// the private key is also encrypted with a key derived from a recovery
+// phrase and that ciphertext is stored server-side. Restoring from the
+// phrase on a brand new device recovers the exact same keypair (not a
+// rotation), so every previously-wrapped group/DM key stays valid.
+
+import {
+  getStoredIdentity,
+  setStoredIdentity,
+  migrateFromLocalStorage,
+} from "./key-store";
+import {
+  generateRecoveryPhrase,
+  encryptPrivateKeyForBackup,
+  decryptPrivateKeyFromBackup,
+  normalizePhrase,
+  type EncryptedKeyBackup,
+} from "./recovery-phrase";
 
 const RSA_ALGO = { name: "RSA-OAEP", hash: "SHA-256" };
 const AES_ALGO = { name: "AES-GCM", length: 256 };
-
-function privateKeyStorageKey(userId: string) {
-  return `familyChat:privateKey:${userId}`;
-}
 
 function bufToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
@@ -44,44 +64,97 @@ async function importPublicKeyBase64(b64: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("spki", base64ToBuf(b64), RSA_ALGO, true, ["wrapKey"]);
 }
 
-async function exportPrivateKeyBase64(key: CryptoKey): Promise<string> {
-  const raw = await crypto.subtle.exportKey("pkcs8", key);
-  return bufToBase64(raw);
-}
+/**
+ * Step 1 of loading an identity: check for a key already stored on this
+ * device (IndexedDB, or a one-time migration from the old localStorage
+ * format). Never generates or restores anything — a null result means the
+ * caller has to decide between setupNewIdentity (truly first-ever setup)
+ * and restoreIdentityFromPhrase (this account exists, just not on this
+ * device/browser).
+ */
+export async function loadLocalIdentity(
+  userId: string,
+): Promise<{ privateKey: CryptoKey; publicKey: string } | null> {
+  const stored = await getStoredIdentity(userId);
+  if (stored) return stored;
 
-async function importPrivateKeyBase64(b64: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey("pkcs8", base64ToBuf(b64), RSA_ALGO, true, ["unwrapKey"]);
+  const migrated = await migrateFromLocalStorage(userId);
+  if (migrated) {
+    // publicKey for a migrated identity is whatever the server already has
+    // on file for this user — the keypair itself didn't change, so it's
+    // filled in by the caller (which has the profile in hand) rather than
+    // re-derived here.
+    await setStoredIdentity(userId, { privateKey: migrated, publicKey: "" });
+    return { privateKey: migrated, publicKey: "" };
+  }
+
+  return null;
 }
 
 /**
- * Ensures the current user has a local RSA keypair, generating one and
- * uploading the public half if this is the first time this browser has seen
- * this user. Returns the local private key (imported, ready to use).
- *
- * If a private key is already stored locally, the existing public key on the
- * server is left untouched so previously-wrapped group keys stay valid.
+ * True first-time setup for this account (server has no public key on
+ * file at all). Generates a fresh keypair, uploads the public half,
+ * generates a recovery phrase, and immediately persists an encrypted
+ * backup of the private key server-side via `saveBackup` — the phrase
+ * itself is only ever shown to the user, never sent anywhere.
  */
-export async function ensureKeyPair(
+export async function setupNewIdentity(
   userId: string,
-  currentPublicKey: string | null | undefined,
   uploadPublicKey: (publicKey: string) => Promise<void>,
-): Promise<{ privateKey: CryptoKey; publicKey: string }> {
-  const stored = localStorage.getItem(privateKeyStorageKey(userId));
-  if (stored) {
-    return { privateKey: await importPrivateKeyBase64(stored), publicKey: currentPublicKey ?? "" };
-  }
-
+  saveBackup: (backup: EncryptedKeyBackup) => Promise<void>,
+): Promise<{ privateKey: CryptoKey; publicKey: string; recoveryPhrase: string[] }> {
   const keyPair = await generateKeyPair();
-  const privateKeyB64 = await exportPrivateKeyBase64(keyPair.privateKey);
   const publicKeyB64 = await exportPublicKeyBase64(keyPair.publicKey);
+  const pkcs8 = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
 
-  localStorage.setItem(privateKeyStorageKey(userId), privateKeyB64);
+  const recoveryPhrase = generateRecoveryPhrase();
+  const backup = await encryptPrivateKeyForBackup(pkcs8, recoveryPhrase);
 
-  if (currentPublicKey !== publicKeyB64) {
-    await uploadPublicKey(publicKeyB64);
-  }
+  await uploadPublicKey(publicKeyB64);
+  await saveBackup(backup);
 
-  return { privateKey: keyPair.privateKey, publicKey: publicKeyB64 };
+  // Re-import as non-extractable for actual day-to-day use — the
+  // extractable copy above only ever existed transiently to produce the
+  // backup blob.
+  const nonExtractablePrivateKey = await crypto.subtle.importKey(
+    "pkcs8",
+    pkcs8,
+    RSA_ALGO,
+    false,
+    ["unwrapKey"],
+  );
+  await setStoredIdentity(userId, {
+    privateKey: nonExtractablePrivateKey,
+    publicKey: publicKeyB64,
+  });
+
+  return { privateKey: nonExtractablePrivateKey, publicKey: publicKeyB64, recoveryPhrase };
+}
+
+/**
+ * Restores an existing account's identity on a device/browser that doesn't
+ * have it locally, using the recovery phrase against the server-stored
+ * encrypted backup. Recovers the SAME keypair the server's publicKey
+ * already corresponds to — this is a restore, not a rotation, so every
+ * group/DM key already wrapped for this user elsewhere stays valid.
+ * Throws if the phrase is wrong.
+ */
+export async function restoreIdentityFromPhrase(
+  userId: string,
+  publicKey: string,
+  phrase: string,
+  backup: EncryptedKeyBackup,
+): Promise<{ privateKey: CryptoKey; publicKey: string }> {
+  const pkcs8 = await decryptPrivateKeyFromBackup(backup, normalizePhrase(phrase));
+  const privateKey = await crypto.subtle.importKey(
+    "pkcs8",
+    pkcs8,
+    RSA_ALGO,
+    false,
+    ["unwrapKey"],
+  );
+  await setStoredIdentity(userId, { privateKey, publicKey });
+  return { privateKey, publicKey };
 }
 
 export async function generateGroupKey(): Promise<CryptoKey> {

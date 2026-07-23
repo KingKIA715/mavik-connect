@@ -28,6 +28,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/hooks/use-theme";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import {
+  getQuietHours,
+  setQuietHours,
+  DEFAULT_QUIET_HOURS,
+  type QuietHours,
+} from "@/lib/quiet-hours";
+import {
   Phone,
   Key,
   Smartphone,
@@ -103,6 +109,20 @@ export default function Settings() {
     disable: disablePush,
   } = usePushNotifications();
   const [isTogglingPush, setIsTogglingPush] = useState(false);
+  const [quietHours, setQuietHoursState] =
+    useState<QuietHours>(DEFAULT_QUIET_HOURS);
+
+  useEffect(() => {
+    getQuietHours()
+      .then(setQuietHoursState)
+      .catch(() => {});
+  }, []);
+
+  const updateQuietHours = (patch: Partial<QuietHours>) => {
+    const next = { ...quietHours, ...patch };
+    setQuietHoursState(next);
+    setQuietHours(next).catch(() => {});
+  };
 
   const handleTogglePush = async (checked: boolean) => {
     setIsTogglingPush(true);
@@ -423,6 +443,68 @@ export default function Settings() {
                       onCheckedChange={handleTogglePush}
                       aria-label="Toggle notifications"
                     />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-serif text-lg flex items-center gap-2">
+                  <Bell className="w-4 h-4" /> Quiet hours
+                </CardTitle>
+                <CardDescription>
+                  Pause message notifications during set hours — calls still
+                  ring through either way.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-sm font-medium">Enable quiet hours</p>
+                  <Switch
+                    checked={quietHours.enabled}
+                    onCheckedChange={(enabled) =>
+                      updateQuietHours({ enabled })
+                    }
+                    aria-label="Toggle quiet hours"
+                  />
+                </div>
+                {quietHours.enabled && (
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">
+                        From
+                      </Label>
+                      <Input
+                        type="time"
+                        value={`${String(quietHours.startHour).padStart(2, "0")}:00`}
+                        onChange={(e) =>
+                          updateQuietHours({
+                            startHour: parseInt(
+                              e.target.value.split(":")[0],
+                              10,
+                            ),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">
+                        Until
+                      </Label>
+                      <Input
+                        type="time"
+                        value={`${String(quietHours.endHour).padStart(2, "0")}:00`}
+                        onChange={(e) =>
+                          updateQuietHours({
+                            endHour: parseInt(
+                              e.target.value.split(":")[0],
+                              10,
+                            ),
+                          })
+                        }
+                      />
+                    </div>
                   </div>
                 )}
               </CardContent>

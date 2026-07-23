@@ -963,6 +963,7 @@ router.post(
               ? "Sent a file"
               : "Sent a new message",
         url: `/app/dms/${threadId}`,
+        type: "message",
       });
     }
 

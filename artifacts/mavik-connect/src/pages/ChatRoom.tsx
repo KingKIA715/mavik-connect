@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo, Fragment } from "react";
-import { useParams, Link, useLocation } from "wouter";
+import { useParams, Link, useLocation, useSearchParams } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetGroup,
@@ -54,6 +54,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { enqueueOutboxItem } from "@/lib/outbox";
 import {
   Video,
   Phone,
@@ -250,7 +251,7 @@ export default function ChatRoom() {
   };
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const identity = useEncryption();
+  const { identity } = useEncryption();
   const {
     groupKey,
     status: groupKeyStatus,
@@ -258,6 +259,16 @@ export default function ChatRoom() {
   } = useMyGroupKey(groupId, identity?.privateKey ?? null);
 
   const [content, setContent] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    const draft = searchParams.get("draft");
+    if (draft) {
+      setContent((prev) => prev || draft);
+      setSearchParams(new URLSearchParams(), { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isMembersOpen, setIsMembersOpen] = useState(false);
@@ -1000,14 +1011,31 @@ export default function ChatRoom() {
     if (!content.trim() || !groupId || !groupKey) return;
 
     const encrypted = await encryptMessage(groupKey, content);
+    const replyToId = replyingTo?.id;
+    const mentionedUserIds = getMentionedUserIds(content);
+
+    if (!navigator.onLine) {
+      await enqueueOutboxItem({
+        kind: "group",
+        targetId: groupId,
+        content: encrypted,
+        replyToId,
+        mentionedUserIds,
+      });
+      setContent("");
+      setReplyingTo(null);
+      setMentionQuery(null);
+      toast({
+        title: "Message queued",
+        description: "You're offline — this will send once you're back online.",
+      });
+      return;
+    }
+
     sendMessage.mutate(
       {
         groupId,
-        data: {
-          content: encrypted,
-          replyToId: replyingTo?.id,
-          mentionedUserIds: getMentionedUserIds(content),
-        },
+        data: { content: encrypted, replyToId, mentionedUserIds },
       },
       {
         onSuccess: () => {
@@ -1015,6 +1043,33 @@ export default function ChatRoom() {
           setReplyingTo(null);
           setMentionQuery(null);
           markFirstMessageSent();
+        },
+        onError: async (err) => {
+          const isNetworkFailure =
+            err instanceof TypeError || !navigator.onLine;
+          if (!isNetworkFailure) {
+            toast({
+              variant: "destructive",
+              title: "Couldn't send message",
+              description: "Please try again.",
+            });
+            return;
+          }
+          await enqueueOutboxItem({
+            kind: "group",
+            targetId: groupId,
+            content: encrypted,
+            replyToId,
+            mentionedUserIds,
+          });
+          setContent("");
+          setReplyingTo(null);
+          setMentionQuery(null);
+          toast({
+            title: "Message queued",
+            description:
+              "You're offline — this will send once you're back online.",
+          });
         },
       },
     );

@@ -33,6 +33,12 @@ export interface PushPayload {
   body: string;
   /** App-relative path to open when the notification is clicked. */
   url?: string;
+  /**
+   * "call" pushes always ring through regardless of the client's quiet
+   * hours setting (see sw.js); anything else — including omitted —
+   * is treated as an ordinary message and can be suppressed.
+   */
+  type?: "message" | "call";
 }
 
 /**

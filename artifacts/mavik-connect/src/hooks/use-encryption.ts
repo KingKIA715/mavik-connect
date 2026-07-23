@@ -15,16 +15,21 @@ import {
   useGetMyDmKey,
   getMyDmKey,
   setDmKey as setDmKeyApi,
+  getMyKeyBackup,
+  setMyKeyBackup,
   getGetMyGroupKeyQueryKey,
   getGetMyDmKeyQueryKey,
   getGetMyProfileQueryKey,
 } from "@workspace/api-client-react";
 import {
-  ensureKeyPair,
+  loadLocalIdentity,
+  setupNewIdentity,
+  restoreIdentityFromPhrase,
   generateGroupKey,
   unwrapGroupKey,
   wrapGroupKeyForMember,
 } from "@/lib/crypto";
+import type { EncryptedKeyBackup } from "@/lib/recovery-phrase";
 
 const groupKeyCache = new Map<string, CryptoKey>();
 
@@ -38,36 +43,110 @@ function setCachedGroupKey(groupId: string, key: CryptoKey) {
 
 type EncryptionIdentity = { privateKey: CryptoKey; publicKey: string } | null;
 
-const EncryptionContext = createContext<EncryptionIdentity>(null);
+export type EncryptionStatus =
+  | "loading"
+  | "ready"
+  // Server already has a public key for this account, but this browser
+  // has no local private key and no way to derive one — the only path
+  // forward is the recovery phrase (or another device re-sharing thread
+  // keys to a freshly-generated one, which the user can also choose).
+  | "needs-restore"
+  // A brand-new identity was just generated. The recovery phrase is
+  // shown exactly once here; the encrypted backup is already saved
+  // server-side by the time this state is reached, so closing the app
+  // without acknowledging doesn't lose the backup, just the user's own
+  // copy of the phrase.
+  | "needs-backup-ack";
+
+interface EncryptionContextValue {
+  status: EncryptionStatus;
+  identity: EncryptionIdentity;
+  /** Only populated in the "needs-backup-ack" state. */
+  recoveryPhrase: string[] | null;
+  /** Call after the user has saved their new recovery phrase somewhere. */
+  acknowledgeBackup: () => void;
+  /** Attempts to restore this account's identity from a recovery phrase. Throws on wrong phrase. */
+  restoreFromPhrase: (phrase: string) => Promise<void>;
+  /** Gives up trying to restore and starts a brand-new identity instead (old messages become unreadable on this device). */
+  startFreshIdentity: () => Promise<void>;
+}
+
+const EncryptionContext = createContext<EncryptionContextValue>({
+  status: "loading",
+  identity: null,
+  recoveryPhrase: null,
+  acknowledgeBackup: () => {},
+  restoreFromPhrase: async () => {},
+  startFreshIdentity: async () => {},
+});
 
 /**
  * Ensures the signed-in user has an end-to-end encryption identity
- * (RSA keypair). Generates + uploads one on first use per browser, and
- * provides it to descendants via context.
+ * (RSA keypair), stored as a non-extractable key in IndexedDB. Handles
+ * three cases: identity already on this device (fast path), no identity
+ * anywhere yet (generate + back up), and an existing account opened on a
+ * device that doesn't have the identity locally (needs the recovery
+ * phrase to restore rather than silently generating a new, incompatible
+ * keypair).
  */
 export function EncryptionProvider({ children }: { children: ReactNode }) {
   const { data: profile } = useGetMyProfile();
   const setPublicKey = useSetMyPublicKey();
   const queryClient = useQueryClient();
+
+  const [status, setStatus] = useState<EncryptionStatus>("loading");
   const [identity, setIdentity] = useState<EncryptionIdentity>(null);
+  const [recoveryPhrase, setRecoveryPhrase] = useState<string[] | null>(null);
   const inFlightRef = useRef<string | null>(null);
   const doneRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!profile?.id) return;
-    // Already set up (or currently setting up) for this exact profile snapshot — skip.
     if (doneRef.current === profile.id || inFlightRef.current === profile.id)
       return;
     inFlightRef.current = profile.id;
 
-    ensureKeyPair(profile.id, profile.publicKey, async (publicKey) => {
-      await setPublicKey.mutateAsync({ data: { publicKey } });
-      queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
-    })
-      .then((result) => {
+    (async () => {
+      const local = await loadLocalIdentity(profile.id);
+      if (local) {
+        // Migrated identities (old localStorage format) don't carry a
+        // publicKey of their own — trust the server's copy, which is
+        // untouched since the keypair itself didn't change.
+        setIdentity({
+          privateKey: local.privateKey,
+          publicKey: local.publicKey || profile.publicKey || "",
+        });
+        setStatus("ready");
         doneRef.current = profile.id;
-        setIdentity(result);
-      })
+        return;
+      }
+
+      if (!profile.publicKey) {
+        // True first-time setup for this account.
+        const result = await setupNewIdentity(
+          profile.id,
+          async (publicKey) => {
+            await setPublicKey.mutateAsync({ data: { publicKey } });
+            queryClient.invalidateQueries({
+              queryKey: getGetMyProfileQueryKey(),
+            });
+          },
+          async (backup) => {
+            await setMyKeyBackup(backup);
+          },
+        );
+        setIdentity({ privateKey: result.privateKey, publicKey: result.publicKey });
+        setRecoveryPhrase(result.recoveryPhrase);
+        setStatus("needs-backup-ack");
+        doneRef.current = profile.id;
+        return;
+      }
+
+      // Account exists, has a public key on file, but this browser has
+      // nothing locally — needs the recovery phrase.
+      setStatus("needs-restore");
+      doneRef.current = profile.id;
+    })()
       .catch((err) => {
         console.error("Failed to set up encryption identity, will retry:", err);
       })
@@ -76,14 +155,75 @@ export function EncryptionProvider({ children }: { children: ReactNode }) {
       });
   }, [profile?.id, profile?.publicKey, queryClient, setPublicKey]);
 
+  const acknowledgeBackup = () => {
+    setRecoveryPhrase(null);
+    setStatus("ready");
+  };
+
+  const restoreFromPhrase = async (phrase: string) => {
+    if (!profile?.id || !profile.publicKey) {
+      throw new Error("No account/public key to restore against yet.");
+    }
+    const backupResponse = await getMyKeyBackup();
+    if (!backupResponse.ciphertext || !backupResponse.salt || !backupResponse.iv) {
+      throw new Error(
+        "No backup was found on the server for this account — restoring isn't possible here.",
+      );
+    }
+    const backup: EncryptedKeyBackup = {
+      ciphertext: backupResponse.ciphertext,
+      salt: backupResponse.salt,
+      iv: backupResponse.iv,
+    };
+    const result = await restoreIdentityFromPhrase(
+      profile.id,
+      profile.publicKey,
+      phrase,
+      backup,
+    );
+    setIdentity(result);
+    setStatus("ready");
+  };
+
+  const startFreshIdentity = async () => {
+    if (!profile?.id) return;
+    const result = await setupNewIdentity(
+      profile.id,
+      async (publicKey) => {
+        await setPublicKey.mutateAsync({ data: { publicKey } });
+        queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+      },
+      async (backup) => {
+        await setMyKeyBackup(backup);
+      },
+    );
+    setIdentity({ privateKey: result.privateKey, publicKey: result.publicKey });
+    setRecoveryPhrase(result.recoveryPhrase);
+    setStatus("needs-backup-ack");
+  };
+
   return createElement(
     EncryptionContext.Provider,
-    { value: identity },
+    {
+      value: {
+        status,
+        identity,
+        recoveryPhrase,
+        acknowledgeBackup,
+        restoreFromPhrase,
+        startFreshIdentity,
+      },
+    },
     children,
   );
 }
 
-/** Returns the current user's encryption identity, or null while it's still being set up. */
+/**
+ * Returns the current user's full encryption state: identity (once
+ * ready), status, and the actions needed to drive the recovery-phrase
+ * backup/restore flow. See RecoveryPhraseModal, which is the UI for the
+ * "needs-backup-ack" and "needs-restore" states.
+ */
 export function useEncryption() {
   return useContext(EncryptionContext);
 }

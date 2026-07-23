@@ -89,6 +89,7 @@ router.post("/dms/:threadId/calls", async (req, res): Promise<void> => {
       title: caller?.name ?? "Family Member",
       body: `Incoming ${call.kind === "video" ? "video" : "voice"} call`,
       url: `/app/dms/${threadId}`,
+      type: "call",
     });
   }
 

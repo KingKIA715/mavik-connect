@@ -118,6 +118,40 @@ paths:
                 items:
                   $ref: "#/components/schemas/KeyRotationEntry"
 
+  /users/me/key-backup:
+    put:
+      operationId: setMyKeyBackup
+      tags: [users]
+      summary: Store an encrypted recovery backup of the caller's E2E private key
+      description: >
+        Client-side only encryption: the private key is AES-GCM-encrypted
+        with a key derived (PBKDF2) from a recovery phrase the user is
+        shown exactly once. The server only ever sees ciphertext, salt,
+        and iv — never the phrase or the plaintext key. Restoring from
+        this backup on a new device recovers the SAME keypair, so it is
+        NOT treated as a key rotation (existing wrapped group/DM keys stay
+        valid).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyBackupInput"
+      responses:
+        "200":
+          description: Saved
+    get:
+      operationId: getMyKeyBackup
+      tags: [users]
+      summary: Fetch the caller's encrypted key backup, if any
+      responses:
+        "200":
+          description: Backup ciphertext + salt/iv, or nulls if none was ever saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyBackupResponse"
+
   /push/vapid-public-key:
     get:
       operationId: getVapidPublicKey
@@ -1470,6 +1504,31 @@ components:
         publicKey:
           type: string
           minLength: 1
+
+    KeyBackupInput:
+      type: object
+      required: [ciphertext, salt, iv]
+      properties:
+        ciphertext:
+          type: string
+          minLength: 1
+        salt:
+          type: string
+          minLength: 1
+        iv:
+          type: string
+          minLength: 1
+
+    KeyBackupResponse:
+      type: object
+      required: [ciphertext, salt, iv]
+      properties:
+        ciphertext:
+          type: ["string", "null"]
+        salt:
+          type: ["string", "null"]
+        iv:
+          type: ["string", "null"]
 
     VapidPublicKeyResult:
       type: object

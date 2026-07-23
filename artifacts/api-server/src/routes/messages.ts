@@ -332,6 +332,7 @@ router.post(
         title: group?.name ?? "Family Group",
         body: `${sender?.name ?? "Someone"} sent a new message`,
         url: `/app/groups/${groupId}`,
+        type: "message",
       });
     }
 

@@ -4,12 +4,15 @@ import { useAuth, useUser, SignOutButton } from "@clerk/react";
 import { ReactNode } from "react";
 import { LogOut, Settings, MessageCircle, Home, Menu, X } from "lucide-react";
 import { EncryptionProvider } from "@/hooks/use-encryption";
+import { useOfflineOutboxFlush } from "@/hooks/use-offline-outbox";
+import { RecoveryPhraseModal } from "@/components/RecoveryPhraseModal";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  useOfflineOutboxFlush();
 
   if (!isLoaded) return null;
 
@@ -32,6 +35,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <EncryptionProvider>
+      <RecoveryPhraseModal />
       <div className="flex h-[100dvh] w-full bg-background overflow-hidden">
         {/* Desktop Sidebar */}
         <aside className="hidden md:flex w-64 border-r border-border bg-sidebar flex-col">

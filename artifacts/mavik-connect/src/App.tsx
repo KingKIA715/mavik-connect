@@ -17,6 +17,7 @@ import NotFound from "@/pages/not-found";
 
 import Landing from "@/pages/Landing";
 import Settings from "@/pages/Settings";
+import ShareTarget from "@/pages/ShareTarget";
 import VideoCall from "@/pages/VideoCall";
 import ChatsShell from "@/pages/ChatsShell";
 import DmVideoCall from "@/pages/DmVideoCall";
@@ -99,6 +100,10 @@ function Router() {
 
         <Route path="/app/settings">
           <ProtectedRoute component={Settings} />
+        </Route>
+
+        <Route path="/app/share">
+          <ProtectedRoute component={ShareTarget} />
         </Route>
 
         <Route path="/app/groups/:groupId">

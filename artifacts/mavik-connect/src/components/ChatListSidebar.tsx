@@ -79,6 +79,25 @@ export function ChatListSidebar({
   });
   const { data: profile } = useGetMyProfile();
 
+  // Badging API: mirrors total unread onto the installed app's home-screen
+  // icon, so a glance at the icon (no need to open the app) shows whether
+  // there's anything new — the kind of small native-feeling touch that
+  // makes an installed PWA feel like an app rather than a bookmark.
+  // Silently a no-op on browsers/platforms without support (most desktop
+  // browsers, iOS Safari as of this writing).
+  useEffect(() => {
+    if (!("setAppBadge" in navigator)) return;
+    const totalUnread =
+      (groups?.reduce((sum, g) => sum + (g.unreadCount || 0), 0) ?? 0) +
+      (threads?.reduce((sum, t) => sum + (t.unreadCount || 0), 0) ?? 0);
+
+    if (totalUnread > 0) {
+      navigator.setAppBadge(totalUnread).catch(() => {});
+    } else {
+      navigator.clearAppBadge?.().catch(() => {});
+    }
+  }, [groups, threads]);
+
   // Pinned items float to the top, otherwise keeping the server's existing
   // order (most-recent-first) — Array.prototype.sort is stable, so a
   // comparator that only distinguishes pinned-vs-not preserves that
@@ -106,7 +125,7 @@ export function ChatListSidebar({
   const setDmThreadPinned = useSetDmThreadPinned();
   const setDmThreadMuted = useSetDmThreadMuted();
   const queryClient = useQueryClient();
-  const identity = useEncryption();
+  const { identity } = useEncryption();
   const { toast } = useToast();
 
   // App-wide self-heal for stuck "missing key" DM threads: if I hold this

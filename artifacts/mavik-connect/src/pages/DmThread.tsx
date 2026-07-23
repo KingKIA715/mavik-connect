@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo, Fragment } from "react";
-import { useParams, Link, useLocation } from "wouter";
+import { useParams, Link, useLocation, useSearchParams } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetDmThread,
@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { enqueueOutboxItem } from "@/lib/outbox";
 import {
   ArrowLeft,
   Send,
@@ -246,7 +247,7 @@ export default function DmThread() {
   const toggleReaction = useToggleDmMessageReaction();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const identity = useEncryption();
+  const { identity } = useEncryption();
   const {
     dmKey,
     status: dmKeyStatus,
@@ -254,6 +255,16 @@ export default function DmThread() {
   } = useMyDmKey(threadId, identity?.privateKey ?? null);
 
   const [content, setContent] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    const draft = searchParams.get("draft");
+    if (draft) {
+      setContent((prev) => prev || draft);
+      setSearchParams(new URLSearchParams(), { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [decrypted, setDecrypted] = useState<Record<string, string>>({});
   const [fileUrls, setFileUrls] = useState<Record<string, string>>({});
   const [isUploading, setIsUploading] = useState(false);
@@ -892,8 +903,26 @@ export default function DmThread() {
     if (!content.trim() || !threadId || !dmKey || !canSendMessage) return;
 
     const encrypted = await encryptMessage(dmKey, content);
+    const replyToId = replyingTo?.id;
+
+    if (!navigator.onLine) {
+      await enqueueOutboxItem({
+        kind: "dm",
+        targetId: threadId,
+        content: encrypted,
+        replyToId,
+      });
+      setContent("");
+      setReplyingTo(null);
+      toast({
+        title: "Message queued",
+        description: "You're offline — this will send once you're back online.",
+      });
+      return;
+    }
+
     sendDmMessage.mutate(
-      { threadId, data: { content: encrypted, replyToId: replyingTo?.id } },
+      { threadId, data: { content: encrypted, replyToId } },
       {
         onSuccess: () => {
           setContent("");
@@ -907,6 +936,35 @@ export default function DmThread() {
           });
           queryClient.invalidateQueries({
             queryKey: getListDmThreadsQueryKey(),
+          });
+        },
+        onError: async (err) => {
+          // A real server error (bad request, auth, etc.) shouldn't be
+          // silently queued as if it were a connectivity blip — only
+          // fall back to the outbox for network-level failures (no
+          // response at all reached the browser).
+          const isNetworkFailure =
+            err instanceof TypeError || !navigator.onLine;
+          if (!isNetworkFailure) {
+            toast({
+              variant: "destructive",
+              title: "Couldn't send message",
+              description: "Please try again.",
+            });
+            return;
+          }
+          await enqueueOutboxItem({
+            kind: "dm",
+            targetId: threadId,
+            content: encrypted,
+            replyToId,
+          });
+          setContent("");
+          setReplyingTo(null);
+          toast({
+            title: "Message queued",
+            description:
+              "You're offline — this will send once you're back online.",
           });
         },
       },

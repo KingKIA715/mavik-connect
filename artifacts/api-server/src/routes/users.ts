@@ -14,6 +14,8 @@ import {
   SetMyPublicKeyBody,
   UpdateMyProfileBody,
   GetKeyHistoryResponseItem,
+  SetMyKeyBackupBody,
+  GetMyKeyBackupResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { toIso } from "../lib/serialize";
@@ -230,6 +232,59 @@ router.get(
           userAgent: row.userAgent,
         }),
       ),
+    );
+  },
+);
+
+// Encrypted recovery backup of the caller's E2E private key. The server
+// only ever stores ciphertext + the salt/iv needed to re-derive the
+// wrapping key from a recovery phrase the client shows once and never
+// sends here — see lib/crypto.ts on the frontend for the encrypt/decrypt
+// side of this. Saving/reading a backup is NOT a key rotation: it does
+// not touch groupKeysTable/dmKeysTable, since restoring from a backup
+// recovers the SAME keypair rather than replacing it.
+router.put(
+  "/users/me/key-backup",
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const parsed = SetMyKeyBackupBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    await db
+      .update(usersTable)
+      .set({
+        keyBackupCiphertext: parsed.data.ciphertext,
+        keyBackupSalt: parsed.data.salt,
+        keyBackupIv: parsed.data.iv,
+      })
+      .where(eq(usersTable.id, req.userId!));
+
+    res.json({ ok: true });
+  },
+);
+
+router.get(
+  "/users/me/key-backup",
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const [user] = await db
+      .select({
+        keyBackupCiphertext: usersTable.keyBackupCiphertext,
+        keyBackupSalt: usersTable.keyBackupSalt,
+        keyBackupIv: usersTable.keyBackupIv,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.id, req.userId!));
+
+    res.json(
+      GetMyKeyBackupResponse.parse({
+        ciphertext: user?.keyBackupCiphertext ?? null,
+        salt: user?.keyBackupSalt ?? null,
+        iv: user?.keyBackupIv ?? null,
+      }),
     );
   },
 );
