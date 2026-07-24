@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -42,7 +42,10 @@ import {
   PinOff,
   Bell,
   BellOff,
+  Search,
 } from "lucide-react";
+import { SearchModal } from "@/components/SearchModal";
+import { useTotalUnreadCount } from "@/hooks/use-unread-count";
 import { formatDistanceToNow } from "date-fns";
 import {
   useEncryption,
@@ -54,14 +57,17 @@ import { useToast } from "@/hooks/use-toast";
 
 type Tab = "groups" | "dms";
 
-export function ChatListSidebar({
-  activeGroupId,
-  activeThreadId,
-}: {
-  activeGroupId?: string;
-  activeThreadId?: string;
-}) {
+export type ChatListSidebarHandle = {
+  openCreateGroup: () => void;
+  openStartDm: () => void;
+};
+
+export const ChatListSidebar = forwardRef<
+  ChatListSidebarHandle,
+  { activeGroupId?: string; activeThreadId?: string }
+>(function ChatListSidebar({ activeGroupId, activeThreadId }, ref) {
   const [tab, setTab] = useState<Tab>(activeGroupId ? "groups" : "dms");
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const { data: groups, isLoading: groupsLoading } = useListGroups();
   const { data: threads, isLoading: threadsLoading } = useListDmThreads({
@@ -78,6 +84,7 @@ export function ChatListSidebar({
     },
   });
   const { data: profile } = useGetMyProfile();
+  const totalUnread = useTotalUnreadCount();
 
   // Badging API: mirrors total unread onto the installed app's home-screen
   // icon, so a glance at the icon (no need to open the app) shows whether
@@ -87,16 +94,12 @@ export function ChatListSidebar({
   // browsers, iOS Safari as of this writing).
   useEffect(() => {
     if (!("setAppBadge" in navigator)) return;
-    const totalUnread =
-      (groups?.reduce((sum, g) => sum + (g.unreadCount || 0), 0) ?? 0) +
-      (threads?.reduce((sum, t) => sum + (t.unreadCount || 0), 0) ?? 0);
-
     if (totalUnread > 0) {
       navigator.setAppBadge(totalUnread).catch(() => {});
     } else {
       navigator.clearAppBadge?.().catch(() => {});
     }
-  }, [groups, threads]);
+  }, [totalUnread]);
 
   // Pinned items float to the top, otherwise keeping the server's existing
   // order (most-recent-first) — Array.prototype.sort is stable, so a
@@ -250,6 +253,17 @@ export function ChatListSidebar({
   const [isDmDialogOpen, setIsDmDialogOpen] = useState(false);
   const [isStartingDm, setIsStartingDm] = useState(false);
 
+  useImperativeHandle(ref, () => ({
+    openCreateGroup: () => {
+      setTab("groups");
+      setIsGroupDialogOpen(true);
+    },
+    openStartDm: () => {
+      setTab("dms");
+      setIsDmDialogOpen(true);
+    },
+  }));
+
   // Name search for starting a new DM without knowing the exact email —
   // debounced so we're not firing a request on every keystroke.
   const [nameQuery, setNameQuery] = useState("");
@@ -345,8 +359,17 @@ export function ChatListSidebar({
 
   return (
     <div className="relative flex flex-col h-full min-h-0">
+      <SearchModal open={searchOpen} onOpenChange={setSearchOpen} />
+
       {/* Category tabs */}
       <div className="flex-none flex items-center gap-1 p-2 border-b border-border">
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="p-2 rounded-md text-muted-foreground hover:bg-muted transition-colors"
+          aria-label="Search messages"
+        >
+          <Search className="w-4 h-4" />
+        </button>
         <button
           onClick={() => setTab("dms")}
           className={`flex-1 text-sm font-medium py-2 rounded-md transition-colors ${tab === "dms" ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted"}`}
@@ -732,4 +755,4 @@ export function ChatListSidebar({
       </Dialog>
     </div>
   );
-}
+});

@@ -2,16 +2,20 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth, useUser, SignOutButton } from "@clerk/react";
 import { ReactNode } from "react";
-import { LogOut, Settings, MessageCircle, Home, Menu, X } from "lucide-react";
+import { LogOut, Settings, MessageCircle, Home, Menu, X, Search, ChevronRight } from "lucide-react";
 import { EncryptionProvider } from "@/hooks/use-encryption";
 import { useOfflineOutboxFlush } from "@/hooks/use-offline-outbox";
+import { useTotalUnreadCount } from "@/hooks/use-unread-count";
 import { RecoveryPhraseModal } from "@/components/RecoveryPhraseModal";
+import { SearchModal } from "@/components/SearchModal";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const totalUnread = useTotalUnreadCount();
   useOfflineOutboxFlush();
 
   if (!isLoaded) return null;
@@ -25,17 +29,35 @@ export function AppLayout({ children }: { children: ReactNode }) {
       <Link
         href="/app"
         onClick={() => setMobileMenuOpen(false)}
-        className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${location === "/app" ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium" : "text-sidebar-foreground hover:bg-sidebar-accent/50"}`}
+        className={`flex items-center justify-between gap-3 px-3 py-2 rounded-md transition-colors ${location === "/app" ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium" : "text-sidebar-foreground hover:bg-sidebar-accent/50"}`}
       >
-        <Home className="w-5 h-5" />
-        Chats
+        <span className="flex items-center gap-3">
+          <Home className="w-5 h-5" />
+          Chats
+        </span>
+        {totalUnread > 0 && (
+          <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">
+            {totalUnread > 99 ? "99+" : totalUnread}
+          </span>
+        )}
       </Link>
+      <button
+        onClick={() => {
+          setMobileMenuOpen(false);
+          setSearchOpen(true);
+        }}
+        className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
+      >
+        <Search className="w-5 h-5" />
+        Search
+      </button>
     </>
   );
 
   return (
     <EncryptionProvider>
       <RecoveryPhraseModal />
+      <SearchModal open={searchOpen} onOpenChange={setSearchOpen} />
       <div className="flex h-[100dvh] w-full bg-background overflow-hidden">
         {/* Desktop Sidebar */}
         <aside className="hidden md:flex w-64 border-r border-border bg-sidebar flex-col">
@@ -50,23 +72,27 @@ export function AppLayout({ children }: { children: ReactNode }) {
             {navItems}
           </nav>
 
-          <div className="p-4 border-t border-sidebar-border space-y-2">
-            {user && (
-              <div className="flex items-center gap-2 px-3 py-2 text-sm text-sidebar-foreground">
+          <div className="p-2 border-t border-sidebar-border">
+            <Link
+              href="/app/settings"
+              className="flex items-center gap-2 px-3 py-2.5 rounded-md text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors group"
+            >
+              {user && (
                 <img
                   src={user.imageUrl}
                   alt=""
-                  className="w-6 h-6 rounded-full"
+                  className="w-8 h-8 rounded-full flex-shrink-0"
                 />
-                <span className="truncate">{user.firstName || user.username || "User"}</span>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium truncate">
+                  {user?.firstName || user?.username || "Your profile"}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  View profile & settings
+                </div>
               </div>
-            )}
-            <Link
-              href="/app/settings"
-              className="flex items-center gap-3 px-3 py-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
-            >
-              <Settings className="w-5 h-5" />
-              Settings
+              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
             </Link>
 
             <SignOutButton>

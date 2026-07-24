@@ -1,15 +1,22 @@
 import { useRoute } from "wouter";
 import { Link } from "wouter";
-import { useGetRecentActivity } from "@workspace/api-client-react";
-import { ChatListSidebar } from "@/components/ChatListSidebar";
+import { useRef } from "react";
+import {
+  useGetRecentActivity,
+  useListGroups,
+  useListDmThreads,
+} from "@workspace/api-client-react";
+import { ChatListSidebar, type ChatListSidebarHandle } from "@/components/ChatListSidebar";
+import { Button } from "@/components/ui/button";
 import ChatRoom from "@/pages/ChatRoom";
 import DmThread from "@/pages/DmThread";
-import { MessageCircle, Clock } from "lucide-react";
+import { MessageCircle, Clock, Users, UserPlus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 export default function ChatsShell() {
   const [matchGroup, groupParams] = useRoute("/app/groups/:groupId");
   const [matchDm, dmParams] = useRoute("/app/dms/:threadId");
+  const sidebarRef = useRef<ChatListSidebarHandle>(null);
 
   const groupId = matchGroup ? groupParams?.groupId : undefined;
   const threadId = matchDm ? dmParams?.threadId : undefined;
@@ -20,27 +27,83 @@ export default function ChatsShell() {
       <aside
         className={`${hasSelection ? "hidden md:flex" : "flex"} w-full md:w-80 lg:w-96 flex-col border-r border-border bg-card flex-shrink-0 min-h-0`}
       >
-        <ChatListSidebar activeGroupId={groupId} activeThreadId={threadId} />
+        <ChatListSidebar
+          ref={sidebarRef}
+          activeGroupId={groupId}
+          activeThreadId={threadId}
+        />
       </aside>
 
       <main
         className={`${hasSelection ? "flex" : "hidden md:flex"} flex-1 flex-col min-w-0 min-h-0`}
       >
-        {groupId ? <ChatRoom /> : threadId ? <DmThread /> : <EmptyState />}
+        {groupId ? (
+          <ChatRoom />
+        ) : threadId ? (
+          <DmThread />
+        ) : (
+          <EmptyState
+            onCreateGroup={() => sidebarRef.current?.openCreateGroup()}
+            onStartDm={() => sidebarRef.current?.openStartDm()}
+          />
+        )}
       </main>
     </div>
   );
 }
 
-function EmptyState() {
-  const { data: activity, isLoading } = useGetRecentActivity();
+function EmptyState({
+  onCreateGroup,
+  onStartDm,
+}: {
+  onCreateGroup: () => void;
+  onStartDm: () => void;
+}) {
+  const { data: activity, isLoading: activityLoading } = useGetRecentActivity();
+  const { data: groups, isLoading: groupsLoading } = useListGroups();
+  const { data: threads, isLoading: threadsLoading } = useListDmThreads();
+
+  const isLoading = activityLoading || groupsLoading || threadsLoading;
+  const isTrulyNew =
+    !isLoading &&
+    (groups?.length ?? 0) === 0 &&
+    (threads?.length ?? 0) === 0;
+
+  // A brand-new account has nothing to "pick from the left" — show a
+  // real getting-started screen with working actions instead of copy
+  // that only makes sense once you already have conversations.
+  if (isTrulyNew) {
+    return (
+      <div className="flex-1 overflow-y-auto p-10 flex flex-col items-center justify-center">
+        <div className="max-w-sm text-center">
+          <MessageCircle className="w-14 h-14 text-primary/40 mx-auto mb-4" />
+          <h1 className="text-2xl font-serif font-bold text-foreground">
+            Welcome to Mavik Connect
+          </h1>
+          <p className="text-muted-foreground mt-1 mb-6">
+            Nothing here yet — start a group or message someone to get going.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Button onClick={onCreateGroup} className="gap-2">
+              <Users className="w-4 h-4" />
+              Create a group
+            </Button>
+            <Button onClick={onStartDm} variant="outline" className="gap-2">
+              <UserPlus className="w-4 h-4" />
+              Message someone
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-y-auto p-10 flex flex-col items-center">
       <div className="max-w-md text-center mt-10 mb-10">
         <MessageCircle className="w-14 h-14 text-muted-foreground/30 mx-auto mb-4" />
         <h1 className="text-2xl font-serif font-bold text-foreground">
-          Welcome Home
+          Welcome Back
         </h1>
         <p className="text-muted-foreground mt-1">
           Pick a group or a conversation from the left to get started.

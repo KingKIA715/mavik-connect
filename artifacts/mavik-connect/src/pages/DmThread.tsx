@@ -44,6 +44,7 @@ import {
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { enqueueOutboxItem } from "@/lib/outbox";
+import { indexMessage, removeIndexedMessage } from "@/lib/search-index";
 import {
   ArrowLeft,
   Send,
@@ -596,13 +597,34 @@ export default function DmThread() {
         } catch {
           next[msg.id] = "";
         }
+        // Only text messages have meaningful searchable content — file/voice
+        // messages' "content" is a filename or empty, not worth indexing.
+        if (
+          !cancelled &&
+          msg.type === "text" &&
+          !msg.deletedAt &&
+          next[msg.id]
+        ) {
+          indexMessage({
+            key: `dm:${msg.id}`,
+            kind: "dm",
+            targetId: threadId!,
+            targetName: thread?.otherUserName ?? "",
+            messageId: msg.id,
+            senderName: msg.senderName,
+            content: next[msg.id],
+            createdAt: msg.createdAt,
+          }).catch(() => {});
+        } else if (msg.deletedAt) {
+          removeIndexedMessage(`dm:${msg.id}`).catch(() => {});
+        }
       }
       if (!cancelled) setDecrypted(next);
     })();
     return () => {
       cancelled = true;
     };
-  }, [dmKey, messages]);
+  }, [dmKey, messages, threadId, thread?.otherUserName]);
 
   // If I hold the thread key but the other participant doesn't have a
   // wrapped copy yet (e.g. they just set up their public key for the first

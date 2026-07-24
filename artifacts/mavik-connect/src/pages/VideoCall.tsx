@@ -113,7 +113,7 @@ export default function VideoCall() {
         {/* Remote Tiles */}
         {remoteIds.map((id) => {
           const member = group.members.find((m) => m.userId === id);
-          const name = member?.name || "Family Member";
+          const name = member?.name || "Group Member";
           return isVoiceOnly ? (
             <VoiceTile key={id} name={name} avatarUrl={member?.avatarUrl} />
           ) : (

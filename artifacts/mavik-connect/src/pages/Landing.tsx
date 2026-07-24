@@ -87,12 +87,12 @@ export default function Landing() {
             Now with message requests — you decide who reaches you
           </Badge>
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-serif font-bold text-foreground tracking-tight leading-[1.1]">
-            A private space for the people you love.
+            A private space for real conversations.
           </h1>
           <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-lg mx-auto lg:mx-0">
             Reply to the message that started it. Send a voice note when typing
-            won't cut it. Tag your sister so she doesn't miss the plan. All of
-            it end‑to‑end encrypted, just for your family.
+            won't cut it. Tag someone so they don't miss the plan. All of
+            it end‑to‑end encrypted, for every person and group you talk to.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 pt-2">
             <Link href="/sign-up">
@@ -100,7 +100,7 @@ export default function Landing() {
                 size="lg"
                 className="w-full sm:w-auto text-base px-8 py-6 rounded-full shadow-lg hover:shadow-xl transition-all"
               >
-                Create a Family Group
+                Get Started
               </Button>
             </Link>
             <Link href="/sign-in">
@@ -115,7 +115,7 @@ export default function Landing() {
           </div>
           <div className="flex items-center justify-center lg:justify-start gap-2 text-sm text-muted-foreground pt-1">
             <Lock className="w-3.5 h-3.5" />
-            End-to-end encrypted — no one but your family can read a word.
+            End-to-end encrypted — no one but the people you message can read a word.
           </div>
         </div>
 
@@ -128,11 +128,11 @@ export default function Landing() {
           <div className="max-w-sm mx-auto bg-card border border-card-border rounded-[2rem] shadow-2xl shadow-primary/10 overflow-hidden">
             <div className="flex items-center gap-2 px-5 py-4 border-b border-border bg-sidebar">
               <div className="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-serif font-semibold text-sm flex-shrink-0">
-                O
+                W
               </div>
               <div className="min-w-0">
                 <div className="text-sm font-medium text-foreground truncate">
-                  The Okafors
+                  Weekend Trip
                 </div>
                 <div className="text-xs text-muted-foreground">4 online</div>
               </div>
@@ -141,24 +141,24 @@ export default function Landing() {
               {/* incoming text */}
               <div className="flex flex-col items-start max-w-[85%]">
                 <span className="text-xs text-muted-foreground ml-1 mb-1 font-medium">
-                  Mom
+                  Priya
                 </span>
                 <div className="px-4 py-2.5 rounded-2xl rounded-tl-sm bg-white border border-border text-sm shadow-sm">
-                  Sunday brunch at mine — everyone free?
+                  Cabin's booked for Saturday — everyone free?
                 </div>
               </div>
               {/* reply/quote */}
               <div className="flex flex-col items-end max-w-[85%] ml-auto">
                 <div className="mb-1 max-w-full border-l-2 border-primary/40 bg-muted/40 rounded-md px-2.5 py-1.5 text-xs self-end">
-                  <div className="font-medium text-primary/80">Mom</div>
+                  <div className="font-medium text-primary/80">Priya</div>
                   <div className="text-muted-foreground truncate">
-                    Sunday brunch at mine — everyone free?
+                    Cabin's booked for Saturday — everyone free?
                   </div>
                 </div>
                 <div className="px-4 py-2.5 rounded-2xl rounded-tr-sm bg-primary text-primary-foreground text-sm shadow-sm">
                   Count me in! Bringing{" "}
                   <span className="font-medium bg-white/20 rounded px-0.5">
-                    @Jamie
+                    @Jordan
                   </span>{" "}
                   too
                 </div>
@@ -169,7 +169,7 @@ export default function Landing() {
               {/* voice message */}
               <div className="flex flex-col items-start max-w-[85%]">
                 <span className="text-xs text-muted-foreground ml-1 mb-1 font-medium">
-                  Dad
+                  Sam
                 </span>
                 <div className="px-4 py-2.5 rounded-2xl rounded-tl-sm bg-white border border-border shadow-sm flex items-center gap-3 min-w-[180px]">
                   <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -186,7 +186,7 @@ export default function Landing() {
               {/* system message — a real, distinctive feature: quiet, centered, unmissable */}
               <div className="flex justify-center">
                 <span className="text-[11px] text-muted-foreground bg-muted/60 px-3 py-1 rounded-full">
-                  Jamie joined the group
+                  Jordan joined the group
                 </span>
               </div>
             </div>
@@ -210,13 +210,13 @@ export default function Landing() {
               number="01"
               icon={<UserPlus className="w-5 h-5" />}
               title="Create your space"
-              description="Sign up and start a family group, or reach out to one person at a time — your call."
+              description="Sign up and start a group, or reach out to one person at a time — your call."
             />
             <Step
               number="02"
               icon={<Inbox className="w-5 h-5" />}
               title="Invite on your terms"
-              description="Add family to a group directly, or find someone by name or email. A new DM starts as a request they can accept or decline."
+              description="Add people to a group directly, or find someone by name or email. A new DM starts as a request they can accept or decline."
             />
             <Step
               number="03"
@@ -235,7 +235,7 @@ export default function Landing() {
       >
         <div className="text-center max-w-xl mx-auto mb-10 sm:mb-14">
           <h2 className="text-2xl sm:text-3xl font-serif font-bold text-foreground tracking-tight">
-            Built for how families actually talk
+            Built for how real conversations actually happen
           </h2>
           <p className="text-muted-foreground mt-3">
             Every feature below exists because a real conversation needed it.
@@ -255,7 +255,7 @@ export default function Landing() {
           <FeatureCard
             icon={<AtSign className="w-5 h-5" />}
             title="@Mentions"
-            description="Tag someone by name and they'll know it's meant for them, even in a big family group."
+            description="Tag someone by name and they'll know it's meant for them, even in a busy group chat."
           />
           <FeatureCard
             icon={<Inbox className="w-5 h-5" />}
@@ -276,7 +276,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Trust — the actual differentiator for a private/family app */}
+      {/* Trust — the actual differentiator for a private app */}
       <section className="border-t border-border/60 bg-sidebar/40">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24 grid md:grid-cols-2 gap-10 md:gap-16 items-center">
           <div className="space-y-4 text-center md:text-left">
@@ -286,7 +286,7 @@ export default function Landing() {
             <p className="text-muted-foreground leading-relaxed max-w-md mx-auto md:mx-0">
               Mavik Connect isn't funded by keeping you scrolling. There are no
               ads here, nothing to sell to a data broker, and nothing to read
-              but what your family sends each other.
+              but what you and the people you message send each other.
             </p>
           </div>
           <div className="space-y-5">
@@ -325,7 +325,7 @@ export default function Landing() {
               Is Mavik Connect free to use?
             </AccordionTrigger>
             <AccordionContent className="text-muted-foreground">
-              Yes. Creating an account, starting a family group, and messaging
+              Yes. Creating an account, starting a group, and messaging
               are all free.
             </AccordionContent>
           </AccordionItem>
@@ -350,26 +350,26 @@ export default function Landing() {
               can't read your conversations, and neither can anyone else.
             </AccordionContent>
           </AccordionItem>
-          <AccordionItem value="groups">
-            <AccordionTrigger className="text-left font-medium">
-              Is this only for immediate family?
-            </AccordionTrigger>
-            <AccordionContent className="text-muted-foreground">
-              Not at all — "family" is just what we built it for. Create a group
-              for anyone: cousins, roommates, a close-knit friend group. Anyone
-              in the group can see who joins or leaves, right in the
-              conversation.
-            </AccordionContent>
-          </AccordionItem>
           <AccordionItem value="lost-access">
             <AccordionTrigger className="text-left font-medium">
               What if I switch phones or clear my browser?
             </AccordionTrigger>
             <AccordionContent className="text-muted-foreground">
-              Your account and history are safe — you'll just need the other
-              person (or someone else in the group) to be online briefly so your
-              new device can be handed a fresh copy of the encryption key. We'll
-              walk you through it if it comes up.
+              When you first sign up, you're shown a 12-word recovery phrase —
+              save it somewhere safe. If you ever open Mavik Connect on a new
+              device or browser, entering that phrase restores your encryption
+              key and every conversation you had access to before, with no one
+              else needing to be online.
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="groups">
+            <AccordionTrigger className="text-left font-medium">
+              Is this only for close-knit groups?
+            </AccordionTrigger>
+            <AccordionContent className="text-muted-foreground">
+              Not at all — start a group with anyone: coworkers, roommates, a
+              club, old friends. Anyone in the group can see who joins or
+              leaves, right in the conversation.
             </AccordionContent>
           </AccordionItem>
         </Accordion>
@@ -379,14 +379,14 @@ export default function Landing() {
       <section className="border-t border-border/60">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-20 text-center space-y-6">
           <h2 className="text-2xl sm:text-3xl font-serif font-bold text-foreground tracking-tight">
-            Your family's conversations deserve a private home.
+            Your conversations deserve a private home.
           </h2>
           <Link href="/sign-up">
             <Button
               size="lg"
               className="text-base px-8 py-6 rounded-full shadow-lg hover:shadow-xl transition-all"
             >
-              Create a Family Group
+              Get Started
             </Button>
           </Link>
         </div>

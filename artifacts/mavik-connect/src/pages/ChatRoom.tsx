@@ -55,6 +55,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { enqueueOutboxItem } from "@/lib/outbox";
+import { indexMessage, removeIndexedMessage } from "@/lib/search-index";
 import {
   Video,
   Phone,
@@ -642,13 +643,32 @@ export default function ChatRoom() {
         } catch {
           next[msg.id] = "";
         }
+        if (
+          !cancelled &&
+          msg.type === "text" &&
+          !msg.deletedAt &&
+          next[msg.id]
+        ) {
+          indexMessage({
+            key: `group:${msg.id}`,
+            kind: "group",
+            targetId: groupId!,
+            targetName: group?.name ?? "",
+            messageId: msg.id,
+            senderName: msg.senderName,
+            content: next[msg.id],
+            createdAt: msg.createdAt,
+          }).catch(() => {});
+        } else if (msg.deletedAt) {
+          removeIndexedMessage(`group:${msg.id}`).catch(() => {});
+        }
       }
       if (!cancelled) setDecrypted(next);
     })();
     return () => {
       cancelled = true;
     };
-  }, [groupKey, messages]);
+  }, [groupKey, messages, groupId, group?.name]);
 
   // Re-share the group key with any member who now has a public key but no
   // wrapped key yet (e.g. they just opened the app for the first time).
@@ -1235,7 +1255,7 @@ export default function ChatRoom() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle className="font-serif text-xl">
-                  Family Members
+                  Group Members
                 </DialogTitle>
               </DialogHeader>
 
@@ -1417,7 +1437,7 @@ export default function ChatRoom() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle className="font-serif text-xl">
-                  Invite a Family Member
+                  Invite Someone
                 </DialogTitle>
               </DialogHeader>
               <form onSubmit={handleInvite} className="space-y-4 pt-4">

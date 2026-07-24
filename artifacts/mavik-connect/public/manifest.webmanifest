@@ -1,7 +1,7 @@
 {
   "name": "Mavik Connect",
   "short_name": "Mavik Connect",
-  "description": "A private, warm space for your family to stay close.",
+  "description": "A private, secure space for real conversations.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

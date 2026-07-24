@@ -33,6 +33,7 @@ import {
   DEFAULT_QUIET_HOURS,
   type QuietHours,
 } from "@/lib/quiet-hours";
+import { clearSearchIndex } from "@/lib/search-index";
 import {
   Phone,
   Key,
@@ -292,7 +293,7 @@ export default function Settings() {
                   <Phone className="w-4 h-4" /> Profile
                 </CardTitle>
                 <CardDescription>
-                  Your name (shown to family members) and an optional phone
+                  Your name (shown to others in your conversations) and an optional phone
                   number.
                 </CardDescription>
               </CardHeader>
@@ -636,6 +637,32 @@ export default function Settings() {
                     })}
                   </ul>
                 )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-serif text-lg">
+                  Local search data
+                </CardTitle>
+                <CardDescription>
+                  Message search works entirely on this device — messages
+                  are end-to-end encrypted, so nothing is ever searchable
+                  on our servers. This clears the plaintext search index
+                  stored on this device only; it doesn't delete any
+                  messages or affect other devices.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    await clearSearchIndex();
+                    toast({ title: "Local search data cleared" });
+                  }}
+                >
+                  Clear local search data
+                </Button>
               </CardContent>
             </Card>
           </div>
